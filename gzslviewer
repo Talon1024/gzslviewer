@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+import re
+import argparse
+import os.path
+import glob
+import tempfile
+
+parser = argparse.ArgumentParser(description="Load a GZDoom shader into glslviewer")
+parser.add_argument("path", help="Path to mod folder")
+parser.add_argument("--model", help="Path to 3D model (OBJ)")
+args = parser.parse_args()
+modpath = args.path
+
+re_string = r'(".+[^\\]"|\S+)'
+re_shaderinfo = r"hardwareshader\s+(\S+)\s+" + re_string
+re_gldefs_include = r"#include\s+" + re_string
+re_comment = r"(?:/\*.+\*/)|(?://[^\n]+)"
+re_letter = re.compile(r"([A-Za-z])")
+re_float = r"(-?\d+(?:\.\d+(?:e\d+)?)?)"
+re_shader = r"Shader\s+" + re_string
+re_texture = r"Texture\s+" + re_string + "\s+" + re_string
+re_speed = r"Speed\s+" + re_float
+re_define = r"define\s+" + re_string + "\s*=\s*" + re_string
+
+class ShaderDefinition:
+    fragment_shader_suffix = ".frag"
+
+    def __init__(self, identifier, main_texture, shader, speed, defines, textures):
+        self.identifier = identifier
+        self.main_texture = main_texture
+        self.shader = shader
+        self.speed = speed
+        self.defines = defines
+        self.textures = tuple(textures.items())
+        self.shader_type = "TEXTURE_SHADER"
+
+    @staticmethod
+    def fix_glsl_text(text):
+        text = re.sub(r"gl_TexCoord\[0\]", "vTexCoord", text, re.IGNORECASE)
+        text = re.sub(r"vec4\s+ProcessTexel\s*\([^)]*\)", "vec4 Process(vec4 _c__o___l____o_____r)", text, re.IGNORECASE)
+        text = re.sub(r"uniform\s+float\s+timer;", "", text, re.IGNORECASE)
+        return text
+
+    def convert_shader(self):
+        with open(self.shader, "r") as shader_file, tempfile.NamedTemporaryFile("w", suffix=self.fragment_shader_suffix, delete=False) as temp_shader:
+            self.temp_shader_path = temp_shader.name
+            temp_shader.write("#version 330 core\n")
+            temp_shader.write("#define {}\n".format(self.shader_type))
+            for uniform_index, extra_texture in enumerate(self.textures):
+                uniform_name = "u_tex{}".format(uniform_index + 1)
+                temp_shader.write("uniform sampler2D {};\n".format(uniform_name))
+                temp_shader.write("#define {} {}\n".format(extra_texture[0], uniform_name))
+            temp_shader.write("#include \"gzcompat.frag\"\n")
+            for shader_text in shader_file:
+                shader_text = ShaderDefinition.fix_glsl_text(shader_text)
+                temp_shader.write(shader_text)
+        return self.temp_shader_path
+
+    def get_glslviewer_args(self):
+        argu = ["./glslViewer", "-vFlip",
+                self.convert_shader(), self.main_texture]
+        for texture in self.textures:
+            argu.append(texture[1])
+        if args.model:
+            argu.append(args.model)
+        for define in self.defines.items():
+            define_str = "-D{0},{1}".format(*define)
+            argu.append(define_str)
+        print(argu)
+        return argu
+
+    def view(self):
+        import subprocess
+        argu = self.get_glslviewer_args()
+        subprocess.run(argu)
+
+    def cleanup(self):
+        import os
+        os.remove(self.temp_shader_path)
+
+def case_desensitize(letter):
+    lower = letter.group(1).lower()
+    upper = letter.group(1).upper()
+    return "[" + lower + upper + "]"
+
+def parse_include(include_match):
+    include_fname = include_match.group(1).strip("\"")
+    include_glob = re.sub(re_letter, case_desensitize, include_fname)
+    include_fpath = os.path.join(modpath, include_glob)
+    include_file = open(glob.glob(include_fpath)[0], "r")
+    include_text = include_file.read()
+    include_file.close()
+    return include_text
+
+def resolve_texture(texname):
+    if "/" in texname:
+        tex_glob = re.sub(re_letter, case_desensitize, texname)
+        tex_path = glob.glob(os.path.join(modpath, tex_glob))[0]
+    else:
+        tex_glob_base = "**/{}*".format(
+            re.sub(re_letter, case_desensitize, texname))
+        tex_glob = os.path.join(modpath, tex_glob_base)
+        tex_path = glob.glob(tex_glob, recursive=True)[-1]
+    return tex_path
+
+gldefs_glob = os.path.join(modpath, "**/[gG][lL][dD][eE][fF][sS].*")
+gldefs_paths = glob.glob(gldefs_glob, recursive=True)
+gldefs_text = ""
+for gldefs_path in gldefs_paths:
+    gldefs_file = open(gldefs_path, "r")
+    gldefs_text += gldefs_file.read()
+    gldefs_file.close()
+
+gldefs_text = re.sub(re_gldefs_include, parse_include, gldefs_text,
+                     flags=re.IGNORECASE)
+gldefs_text = re.sub(re_comment, "", gldefs_text, flags=re.DOTALL)
+shader_defs = []
+
+for shader_match in re.finditer(re_shaderinfo, gldefs_text, re.IGNORECASE):
+    if shader_match.group(1).lower() == "postprocess":
+        continue
+    def_start = gldefs_text.find("{", shader_match.start(1))
+    def_end = gldefs_text.find("}", shader_match.start(1))
+    shader_def = gldefs_text[def_start:def_end]
+    raw_texname = shader_match.group(2).lower().strip("\"")
+    texname = resolve_texture(raw_texname)
+    speed = 1
+    shader = ""
+    defines = {}
+    textures = {}
+    shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
+    if shader_match:
+        shader = shader_match.group(1).strip("\"")
+        shader_glob = re.sub(re_letter, case_desensitize, shader)
+        shader = glob.glob(os.path.join(modpath, shader_glob))[0]
+    speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
+    if speed_match:
+        speed = float(speed_match.group(1))
+    for define_match in re.finditer(re_define, shader_def, re.IGNORECASE):
+        defines[define_match.group(1)] = define_match.group(2)
+    for texture_match in re.finditer(re_texture, shader_def, re.IGNORECASE):
+        texture_name = texture_match.group(1).strip("\"")
+        texture_file = texture_match.group(2).strip("\"")
+        texture_path = resolve_texture(texture_file)
+        textures[texture_name] = texture_path
+    shader_defs.append(ShaderDefinition(
+        raw_texname, texname, shader, speed, defines, textures))
+
+print("Select a shader to view:")
+for index, shader in enumerate(shader_defs):
+    print("{}. {}".format(index + 1, shader.identifier))
+shader_to_view = input(">")
+shader_index = int(shader_to_view, 10) - 1
+shader_defs[shader_index].view()
+shader_defs[shader_index].cleanup()
