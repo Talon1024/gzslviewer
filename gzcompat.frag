@@ -2,6 +2,7 @@
 
 // Required for following defines
 in vec3 v_normal;
+in vec4 v_position;
 in vec2 v_texcoord;
 in vec4 vTexCoord;
 uniform mat4 u_modelViewProjectionMatrix;
@@ -71,8 +72,9 @@ vec4 desaturate(vec4 texel)
 #define pixelpos vec4(1.)
 #endif
 
-// Take care of a GLSL compiler warning
 vec4 FragColor;
+
+// Take care of a GLSL compiler warning
 out vec4 gl_FragColor;
 
 vec4 getTexel(vec2 uv)

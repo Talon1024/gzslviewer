@@ -22,17 +22,20 @@ re_texture = r"Texture\s+" + re_string + "\s+" + re_string
 re_speed = r"Speed\s+" + re_float
 re_define = r"define\s+" + re_string + "\s*=\s*" + re_string
 
+SHADER_TYPE_TEXTURE = "TEXTURE_SHADER"
+SHADER_TYPE_POSTPROCESS = "POSTPROCESS_SHADER"
+
 class ShaderDefinition:
     fragment_shader_suffix = ".frag"
 
-    def __init__(self, identifier, main_texture, shader, speed, defines, textures):
+    def __init__(self, identifier, main_texture, shader, speed, defines, textures, shader_type=SHADER_TYPE_TEXTURE):
         self.identifier = identifier
         self.main_texture = main_texture
         self.shader = shader
         self.speed = speed
         self.defines = defines
         self.textures = tuple(textures.items())
-        self.shader_type = "TEXTURE_SHADER"
+        self.shader_type = shader_type
 
     @staticmethod
     def fix_glsl_text(text):
@@ -61,7 +64,7 @@ class ShaderDefinition:
                 self.convert_shader(), self.main_texture]
         for texture in self.textures:
             argu.append(texture[1])
-        if args.model:
+        if args.model and self.shader_type != SHADER_TYPE_POSTPROCESS:
             argu.append(args.model)
         for define in self.defines.items():
             define_str = "-D{0},{1}".format(*define)
@@ -92,8 +95,8 @@ def parse_include(include_match):
     include_file.close()
     return include_text
 
-def resolve_texture(texname):
-    if "/" in texname:
+def resolve_lump(texname):
+    if "/" in texname:  # Most likely a full path. Note: VILE\X uses backslash!
         tex_glob = re.sub(re_letter, case_desensitize, texname)
         tex_path = glob.glob(os.path.join(modpath, tex_glob))[0]
     else:
@@ -123,7 +126,7 @@ for shader_match in re.finditer(re_shaderinfo, gldefs_text, re.IGNORECASE):
     def_end = gldefs_text.find("}", shader_match.start(1))
     shader_def = gldefs_text[def_start:def_end]
     raw_texname = shader_match.group(2).lower().strip("\"")
-    texname = resolve_texture(raw_texname)
+    texname = resolve_lump(raw_texname)
     speed = 1
     shader = ""
     defines = {}
@@ -141,7 +144,7 @@ for shader_match in re.finditer(re_shaderinfo, gldefs_text, re.IGNORECASE):
     for texture_match in re.finditer(re_texture, shader_def, re.IGNORECASE):
         texture_name = texture_match.group(1).strip("\"")
         texture_file = texture_match.group(2).strip("\"")
-        texture_path = resolve_texture(texture_file)
+        texture_path = resolve_lump(texture_file)
         textures[texture_name] = texture_path
     shader_defs.append(ShaderDefinition(
         raw_texname, texname, shader, speed, defines, textures))
