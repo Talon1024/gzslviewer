@@ -5,11 +5,13 @@ import os.path
 import glob
 import tempfile
 
-parser = argparse.ArgumentParser(description="Load a GZDoom shader into glslviewer")
-parser.add_argument("path", help="Path to mod folder")
-parser.add_argument("--model", help="Path to 3D model (OBJ)")
-args = parser.parse_args()
-modpath = args.path
+cli = False
+try:
+    from tkinter import *
+    from tkinter import filedialog
+    from tkinter import ttk
+except ImportError:
+    cli = True
 
 re_string = r'(".+[^\\]"|\S+)'
 re_shaderinfo = r"hardwareshader\s+(\S+)\s+" + re_string
@@ -24,6 +26,84 @@ re_define = r"define\s+" + re_string + "\s*=\s*" + re_string
 
 SHADER_TYPE_TEXTURE = "TEXTURE_SHADER"
 SHADER_TYPE_POSTPROCESS = "POSTPROCESS_SHADER"
+
+class GZSLViewerGUI:
+    def __init__(self, root):
+        root.title("GZSLViewer")
+        # +--------------------------------------+
+        # | Mod path: _____________..  |Browse|  |
+        # | 3D model (opt.): |____..|  |Browse|  |
+        # | Shader:  |______________________|V|  |
+        # | | View |                 | Cancel |  |
+        # +--------------------------------------+
+        mod_path_row = 0
+        model_row = 1
+        shader_row = 2
+        control_row = 3
+        # Content frame
+        mainframe = ttk.Frame(root, padding="2 2 2 2")
+        mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(0, weight=1)
+        # Top row - mod selection
+        self.modpath = StringVar()
+        ttk.Label(mainframe, text="Mod path:").grid(column=0, row=mod_path_row)
+        ttk.Label(mainframe, textvariable=self.modpath).grid(column=1, row=mod_path_row)
+        ttk.Button(mainframe, text="Browse", command=self.ask_mod_path).grid(column=2, row=mod_path_row)
+        # Model selector
+        self.modelpath = StringVar()
+        ttk.Label(mainframe, text="3D model (opt.)").grid(column=0, row=model_row)
+        ttk.Entry(mainframe, textvariable=self.modelpath, validate="focusout", validatecommand=self.validate_model).grid(column=1, row=model_row)
+        ttk.Button(mainframe, text="Browse", command=self.ask_model_path).grid(column=2, row=model_row)
+        # Shader selector
+        self.shader = IntVar()
+        ttk.Label(mainframe, text="Shader:").grid(column=0, row=shader_row)
+        self.cboShaders = ttk.Combobox(mainframe, state="readonly")
+        self.cboShaders.grid(column=1, row=shader_row)
+        self.cboShaders.bind("<<ComboboxSelected>>", self.set_shader)
+        # Main controls
+        ttk.Button(mainframe, text="View", command=self.view).grid(column=0, row=control_row)
+        ttk.Button(mainframe, text="Cancel/Exit", command=self.exit).grid(column=1, row=control_row)
+        root.mainloop()
+
+    def ask_mod_path(self):
+        self.modpath.set(filedialog.askdirectory())
+        self.on_select_mod()
+
+    def ask_model_path(self):
+        self.modelpath.set(filedialog.askopenfilename())
+
+    def validate_model(self):
+        if self.modelpath.get() == "":
+            return True
+        return os.path.lexists(self.modelpath)
+
+    def on_select_mod(self):
+        self.shaderlist = get_shaders(self.modpath.get())
+        shaderlist = []
+        self.shader_name_indices = {}
+        for index, shaderdef in enumerate(self.shaderlist):
+            self.shader_name_indices[str(shaderdef)] = index
+            shaderlist.append(str(shaderdef))
+        self.cboShaders.configure(values=shaderlist)
+
+    def set_shader(self):
+        self.cboShaders.selection_clear()
+
+    def view(self):
+        shader_name = self.cboShaders.get()
+        if shader_name == "":
+            return
+        shader_index = self.shader_name_indices[shader_name]
+        model_name = self.modelpath.get()
+        if model_name == "":
+            model_name = None
+        self.shaderlist[shader_index].view(model_name)
+        self.shaderlist[shader_index].cleanup()
+
+    def exit(self):
+        exit(0)
+
 
 class ShaderDefinition:
     fragment_shader_suffix = ".frag"
@@ -59,43 +139,48 @@ class ShaderDefinition:
                 temp_shader.write(shader_text)
         return self.temp_shader_path
 
-    def get_glslviewer_args(self):
+    def get_glslviewer_args(self, model_path=None):
         argu = ["./glslViewer", "-vFlip",
                 self.convert_shader(), self.main_texture]
         for texture in self.textures:
             argu.append(texture[1])
-        if args.model and self.shader_type != SHADER_TYPE_POSTPROCESS:
-            argu.append(args.model)
+        if model_path and self.shader_type != SHADER_TYPE_POSTPROCESS:
+            argu.append(model_path)
         for define in self.defines.items():
             define_str = "-D{0},{1}".format(*define)
             argu.append(define_str)
         print(argu)
         return argu
 
-    def view(self):
+    def view(self, model_path=None):
         import subprocess
-        argu = self.get_glslviewer_args()
+        argu = self.get_glslviewer_args(model_path)
         subprocess.run(argu)
 
     def cleanup(self):
         import os
         os.remove(self.temp_shader_path)
 
+    def __str__(self):
+        return self.identifier
+
 def case_desensitize(letter):
     lower = letter.group(1).lower()
     upper = letter.group(1).upper()
     return "[" + lower + upper + "]"
 
-def parse_include(include_match):
-    include_fname = include_match.group(1).strip("\"")
-    include_glob = re.sub(re_letter, case_desensitize, include_fname)
-    include_fpath = os.path.join(modpath, include_glob)
-    include_file = open(glob.glob(include_fpath)[0], "r")
-    include_text = include_file.read()
-    include_file.close()
-    return include_text
+def parse_include(modpath):
+    def do_include(match):
+        include_fname = match.group(1).strip("\"")
+        include_glob = re.sub(re_letter, case_desensitize, include_fname)
+        include_fpath = os.path.join(modpath, include_glob)
+        include_file = open(glob.glob(include_fpath)[0], "r")
+        include_text = include_file.read()
+        include_file.close()
+        return include_text
+    return do_include
 
-def resolve_lump(texname):
+def resolve_lump(modpath, texname):
     if "/" in texname:  # Most likely a full path. Note: VILE\X uses backslash!
         tex_glob = re.sub(re_letter, case_desensitize, texname)
         tex_path = glob.glob(os.path.join(modpath, tex_glob))[0]
@@ -106,53 +191,65 @@ def resolve_lump(texname):
         tex_path = glob.glob(tex_glob, recursive=True)[-1]
     return tex_path
 
-gldefs_glob = os.path.join(modpath, "**/[gG][lL][dD][eE][fF][sS].*")
-gldefs_paths = glob.glob(gldefs_glob, recursive=True)
-gldefs_text = ""
-for gldefs_path in gldefs_paths:
-    gldefs_file = open(gldefs_path, "r")
-    gldefs_text += gldefs_file.read()
-    gldefs_file.close()
+def get_shaders(modpath):
+    gldefs_glob = os.path.join(modpath, "**/[gG][lL][dD][eE][fF][sS].*")
+    gldefs_paths = glob.glob(gldefs_glob, recursive=True)
+    gldefs_text = ""
+    for gldefs_path in gldefs_paths:
+        gldefs_file = open(gldefs_path, "r")
+        gldefs_text += gldefs_file.read()
+        gldefs_file.close()
 
-gldefs_text = re.sub(re_gldefs_include, parse_include, gldefs_text,
-                     flags=re.IGNORECASE)
-gldefs_text = re.sub(re_comment, "", gldefs_text, flags=re.DOTALL)
-shader_defs = []
+    gldefs_text = re.sub(re_gldefs_include, parse_include(modpath),
+                         gldefs_text, flags=re.IGNORECASE)
+    gldefs_text = re.sub(re_comment, "", gldefs_text, flags=re.DOTALL)
+    shader_defs = []
 
-for shader_match in re.finditer(re_shaderinfo, gldefs_text, re.IGNORECASE):
-    if shader_match.group(1).lower() == "postprocess":
-        continue
-    def_start = gldefs_text.find("{", shader_match.start(1))
-    def_end = gldefs_text.find("}", shader_match.start(1))
-    shader_def = gldefs_text[def_start:def_end]
-    raw_texname = shader_match.group(2).lower().strip("\"")
-    texname = resolve_lump(raw_texname)
-    speed = 1
-    shader = ""
-    defines = {}
-    textures = {}
-    shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
-    if shader_match:
-        shader = shader_match.group(1).strip("\"")
-        shader_glob = re.sub(re_letter, case_desensitize, shader)
-        shader = glob.glob(os.path.join(modpath, shader_glob))[0]
-    speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
-    if speed_match:
-        speed = float(speed_match.group(1))
-    for define_match in re.finditer(re_define, shader_def, re.IGNORECASE):
-        defines[define_match.group(1)] = define_match.group(2)
-    for texture_match in re.finditer(re_texture, shader_def, re.IGNORECASE):
-        texture_name = texture_match.group(1).strip("\"")
-        texture_file = texture_match.group(2).strip("\"")
-        texture_path = resolve_lump(texture_file)
-        textures[texture_name] = texture_path
-    shader_defs.append(ShaderDefinition(
-        raw_texname, texname, shader, speed, defines, textures))
+    for shader_match in re.finditer(re_shaderinfo, gldefs_text, re.IGNORECASE):
+        if shader_match.group(1).lower() == "postprocess":
+            continue
+        def_start = gldefs_text.find("{", shader_match.start(1))
+        def_end = gldefs_text.find("}", shader_match.start(1))
+        shader_def = gldefs_text[def_start:def_end]
+        raw_texname = shader_match.group(2).lower().strip("\"")
+        texname = resolve_lump(modpath, raw_texname)
+        speed = 1
+        shader = ""
+        defines = {}
+        textures = {}
+        shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
+        if shader_match:
+            shader = shader_match.group(1).strip("\"")
+            shader_glob = re.sub(re_letter, case_desensitize, shader)
+            shader = glob.glob(os.path.join(modpath, shader_glob))[0]
+        speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
+        if speed_match:
+            speed = float(speed_match.group(1))
+        for define_match in re.finditer(re_define, shader_def, re.IGNORECASE):
+            defines[define_match.group(1)] = define_match.group(2)
+        for texture_match in re.finditer(re_texture, shader_def, re.IGNORECASE):
+            texture_name = texture_match.group(1).strip("\"")
+            texture_file = texture_match.group(2).strip("\"")
+            texture_path = resolve_lump(modpath, texture_file)
+            textures[texture_name] = texture_path
+        shader_defs.append(ShaderDefinition(
+            raw_texname, texname, shader, speed, defines, textures))
+    return shader_defs
 
-print("Select a shader to view:")
-for index, shader in enumerate(shader_defs):
-    print("{}. {}".format(index + 1, shader.identifier))
-shader_to_view = input(">")
-shader_index = int(shader_to_view, 10) - 1
-shader_defs[shader_index].view()
-shader_defs[shader_index].cleanup()
+if cli:
+    # Parse CLI arguments
+    parser = argparse.ArgumentParser(description="Load a GZDoom shader into glslviewer")
+    parser.add_argument("path", help="Path to mod folder")
+    parser.add_argument("--model", help="Path to 3D model (OBJ)")
+    args = parser.parse_args()
+    # Prompt user and run GLSLViewer
+    shader_defs = get_shaders(args.path)
+    print("Select a shader to view:")
+    for index, shader in enumerate(shader_defs):
+        print("{}. {}".format(index + 1, shader.identifier))
+    shader_to_view = input(">")
+    shader_index = int(shader_to_view, 10) - 1
+    shader_defs[shader_index].view(args.model)
+    shader_defs[shader_index].cleanup()
+else:
+    GZSLViewerGUI(Tk())
