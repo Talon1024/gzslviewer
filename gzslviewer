@@ -72,7 +72,7 @@ class GZSLViewerGUI:
         # Shader selector
         ttk.Label(mainframe, text="Shader:").grid(column=0, row=shader_row)
         self.cboShaders = ttk.Combobox(mainframe, state="readonly")
-        self.cboShaders.grid(column=1, row=shader_row)
+        self.cboShaders.grid(column=1, columnspan=2, row=shader_row)
         self.cboShaders.bind("<<ComboboxSelected>>", self.set_shader)
         # Main controls
         ttk.Button(mainframe, text="View", command=self.view).grid(column=0, columnspan=2, row=control_row)
@@ -80,14 +80,16 @@ class GZSLViewerGUI:
         root.mainloop()
 
     def ask_mod_path(self):
-        self.modpath.set(filedialog.askdirectory())
+        self.modpath.set(filedialog.askdirectory(title="Select mod folder", mustexist=True))
         self.on_select_mod()
 
     def ask_model_path(self):
-        self.modelpath.set(filedialog.askopenfilename())
+        self.modelpath.set(filedialog.askopenfilename(
+            filetypes=(("OBJ", ".obj"),)
+        ))
 
     def ask_glslviewer_path(self):
-        self.glslviewer_path.set(filedialog.askdirectory())
+        self.glslviewer_path.set(filedialog.askdirectory(title="Select GLSLViewer folder", mustexist=True))
         if not self.validate_glslviewer_path():
             self.glslviewer_path.set("")
 
