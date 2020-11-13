@@ -67,7 +67,7 @@ class GZSLViewerGUI:
         # Model selector
         self.modelpath = StringVar()
         ttk.Label(mainframe, text="3D model (opt.)").grid(column=0, row=model_row)
-        ttk.Entry(mainframe, textvariable=self.modelpath, validate="focusout", validatecommand=self.validate_model).grid(column=1, row=model_row)
+        ttk.Entry(mainframe, textvariable=self.modelpath, validate="focus", validatecommand=self.validate_model).grid(column=1, row=model_row)
         ttk.Button(mainframe, text="Browse", command=self.ask_model_path).grid(column=2, row=model_row)
         # Shader selector
         ttk.Label(mainframe, text="Shader:").grid(column=0, row=shader_row)
@@ -96,7 +96,7 @@ class GZSLViewerGUI:
     def validate_model(self):
         if self.modelpath.get() == "":
             return True
-        re_obj = "\.obj"
+        re_obj = r"\.obj"
         if not re.search(re_obj, self.modelpath.get(), re.IGNORECASE):
             # Model must be an OBJ!
             self.modelpath.set("")
