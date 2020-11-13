@@ -66,7 +66,6 @@ class GZSLViewerGUI:
         ttk.Button(mainframe, text="Browse", command=self.ask_mod_path).grid(column=2, row=mod_path_row)
         # Model selector
         self.modelpath = StringVar()
-        self.model_valid = False
         ttk.Label(mainframe, text="3D model (opt.)").grid(column=0, row=model_row)
         ttk.Entry(mainframe, textvariable=self.modelpath, validate="focusout", validatecommand=self.validate_model).grid(column=1, row=model_row)
         ttk.Button(mainframe, text="Browse", command=self.ask_model_path).grid(column=2, row=model_row)
@@ -76,8 +75,8 @@ class GZSLViewerGUI:
         self.cboShaders.grid(column=1, row=shader_row)
         self.cboShaders.bind("<<ComboboxSelected>>", self.set_shader)
         # Main controls
-        ttk.Button(mainframe, text="View", command=self.view).grid(column=0, row=control_row)
-        ttk.Button(mainframe, text="Cancel/Exit", command=self.exit).grid(column=1, row=control_row)
+        ttk.Button(mainframe, text="View", command=self.view).grid(column=0, columnspan=2, row=control_row)
+        ttk.Button(mainframe, text="Cancel/Exit", command=self.exit).grid(column=2, row=control_row)
         root.mainloop()
 
     def ask_mod_path(self):
@@ -93,15 +92,17 @@ class GZSLViewerGUI:
             self.glslviewer_path.set("")
 
     def validate_model(self):
-        self.model_valid = True
         if self.modelpath.get() == "":
             return True
         re_obj = "\.obj"
         if not re.search(re_obj, self.modelpath.get(), re.IGNORECASE):
             # Model must be an OBJ!
-            self.model_valid = False
+            self.modelpath.set("")
             return False
-        return os.path.lexists(self.modelpath.get())
+        if not os.path.lexists(self.modelpath.get()):
+            self.modelpath.set("")
+            return False
+        return True
 
     def validate_glslviewer_path(self):
         if self.glslviewer_available:
