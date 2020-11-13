@@ -150,9 +150,10 @@ class GZSLViewerGUI:
 
 
 class ShaderDefinition:
-    fragment_shader_suffix = ".frag"
+    frag_suffix = ".frag"
 
-    def __init__(self, identifier, main_texture, shader, speed, defines, textures, shader_type=SHADER_TYPE_TEXTURE):
+    def __init__(self, identifier, main_texture, shader, speed, defines,
+                 textures, shader_type=SHADER_TYPE_TEXTURE):
         self.identifier = identifier
         self.main_texture = main_texture
         self.shader = shader
@@ -164,19 +165,29 @@ class ShaderDefinition:
     @staticmethod
     def fix_glsl_text(text):
         text = re.sub(r"gl_TexCoord\[0\]", "vTexCoord", text, re.IGNORECASE)
-        text = re.sub(r"vec4\s+ProcessTexel\s*\([^)]*\)", "vec4 Process(vec4 _c__o___l____o_____r)", text, re.IGNORECASE)
+        text = re.sub(
+            r"vec4\s+ProcessTexel\s*\([^)]*\)",
+            "vec4 Process(vec4 _c_o_l_o_r_)",
+            text, re.IGNORECASE
+        )
         text = re.sub(r"uniform\s+float\s+timer;", "", text, re.IGNORECASE)
         return text
 
     def convert_shader(self):
-        with open(self.shader, "r") as shader_file, tempfile.NamedTemporaryFile("w", suffix=self.fragment_shader_suffix, delete=False) as temp_shader:
+        define_bool = "#define {}\n"
+        define_kvpair = "#define {} {}\n"
+        uniform_texture = "uniform sampler2D {};\n"
+        with open(self.shader, "r") as shader_file, (
+            tempfile.NamedTemporaryFile("w", suffix=self.frag_suffix,
+                                        delete=False)) as temp_shader:
             self.temp_shader_path = temp_shader.name
             temp_shader.write("#version 330 core\n")
-            temp_shader.write("#define {}\n".format(self.shader_type))
+            temp_shader.write(define_bool.format(self.shader_type))
             for uniform_index, extra_texture in enumerate(self.textures):
                 uniform_name = "u_tex{}".format(uniform_index + 1)
-                temp_shader.write("uniform sampler2D {};\n".format(uniform_name))
-                temp_shader.write("#define {} {}\n".format(extra_texture[0], uniform_name))
+                temp_shader.write(uniform_texture.format(uniform_name))
+                temp_shader.write(define_kvpair.format(
+                    extra_texture[0], uniform_name))
             temp_shader.write("#include \"gzcompat.frag\"\n")
             for shader_text in shader_file:
                 shader_text = ShaderDefinition.fix_glsl_text(shader_text)
