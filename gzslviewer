@@ -55,10 +55,12 @@ class GZSLViewerGUI:
         root.rowconfigure(0, weight=1)
         # If GLSLViewer isn't available...
         self.glslviewer_path = StringVar()
+        view_state = "normal"
         if not glslviewer_available:
             ttk.Label(mainframe, text="GLSLViewer path:").grid(column=0, row=glslviewer_row)
             ttk.Label(mainframe, textvariable=self.glslviewer_path).grid(column=1, row=glslviewer_row)
             ttk.Button(mainframe, text="Browse", command=self.ask_glslviewer_path).grid(column=2, row=glslviewer_row)
+            view_state = "disabled"
         # Top row - mod selection
         self.modpath = StringVar()
         ttk.Label(mainframe, text="Mod path:").grid(column=0, row=mod_path_row)
@@ -71,11 +73,12 @@ class GZSLViewerGUI:
         ttk.Button(mainframe, text="Browse", command=self.ask_model_path).grid(column=2, row=model_row)
         # Shader selector
         ttk.Label(mainframe, text="Shader:").grid(column=0, row=shader_row)
-        self.cboShaders = ttk.Combobox(mainframe, state="readonly")
-        self.cboShaders.grid(column=1, columnspan=2, row=shader_row)
-        self.cboShaders.bind("<<ComboboxSelected>>", self.set_shader)
+        self.cbo_shaders = ttk.Combobox(mainframe, state="readonly")
+        self.cbo_shaders.grid(column=1, columnspan=2, row=shader_row)
+        self.cbo_shaders.bind("<<ComboboxSelected>>", self.set_shader)
         # Main controls
-        ttk.Button(mainframe, text="View", command=self.view).grid(column=0, columnspan=2, row=control_row)
+        self.btn_view = ttk.Button(mainframe, text="View", state=view_state, command=self.view)
+        self.btn_view.grid(column=0, columnspan=2, row=control_row)
         ttk.Button(mainframe, text="Cancel/Exit", command=self.exit).grid(column=2, row=control_row)
         root.mainloop()
 
@@ -119,7 +122,10 @@ class GZSLViewerGUI:
         glslviewer_results = glob.glob(glslviewer_glob)
         if len(glslviewer_results) > 0:
             self.glslviewer_path.set(glslviewer_results[0])
+            self.btn_view.state(["!disabled"])
             return True
+        self.btn_view.state(["disabled"])
+        return False
 
     def on_select_mod(self):
         self.shaderlist = get_shaders(self.modpath.get())
@@ -128,13 +134,13 @@ class GZSLViewerGUI:
         for index, shaderdef in enumerate(self.shaderlist):
             self.shader_name_indices[str(shaderdef)] = index
             shaderlist.append(str(shaderdef))
-        self.cboShaders.configure(values=shaderlist)
+        self.cbo_shaders.configure(values=shaderlist)
 
     def set_shader(self, tk_event):
         tk_event.widget.selection_clear()
 
     def view(self):
-        shader_name = self.cboShaders.get()
+        shader_name = self.cbo_shaders.get()
         if shader_name == "":
             return
         shader_index = self.shader_name_indices[shader_name]
