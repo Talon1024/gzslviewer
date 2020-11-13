@@ -67,7 +67,7 @@ vec4 desaturate(vec4 texel)
 #define vWorldNormal vec4(v_normal, 1.)
 #define vEyeNormal (_normalMatrixFrom(u_modelViewProjectionMatrix) * vec4(v_normal, 1.))
 #ifdef MODEL_PRIMITIVE_TRIANGLES
-#define pixelpos vec4(v_position.xyz, -(u_modelViewProjectionMatrix * v_position).z / (u_modelViewProjectionMatrix * v_position).w)
+#define pixelpos vec4(v_position.xyz, (u_modelViewProjectionMatrix * v_position).z)
 #else
 #define pixelpos vec4(1.)
 #endif
