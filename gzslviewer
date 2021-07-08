@@ -39,6 +39,18 @@ class GZSLViewerGUI:
         # | 3D model (opt.): |____..|  |Browse|  |
         # | Shader:  |______________________|V|  |
         # | | View |                 | Cancel |  |
+        # | Uniforms:                            |
+        # | +---------------+                    |
+        # | | uObjectColor  |                    |
+        # | | uObjectColor2 |                    |
+        # | |               |                    |
+        # | +---------------+                    |
+        # | Textures:                            |
+        # | +--------+  +---------------------+  |
+        # | |WATR_A00|  |                     |  |
+        # | |WFNOISE |  |   Texture image     |  |
+        # | |        |  |                     |  |
+        # | +--------+  +---------------------+  |
         # +--------------------------------------+
         glslviewer_row_add = 0
         if not glslviewer_available:
@@ -48,38 +60,42 @@ class GZSLViewerGUI:
         model_row = 1 + glslviewer_row_add
         shader_row = 2 + glslviewer_row_add
         control_row = 3 + glslviewer_row_add
+        texture_row = 4 + glslviewer_row_add
         # Content frame
         mainframe = ttk.Frame(root, padding="2 2 2 2")
         mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
+        mainframe.columnconfigure(1, weight=1)
         # If GLSLViewer isn't available...
         self.glslviewer_path = StringVar()
         view_state = "normal"
         if not glslviewer_available:
             ttk.Label(mainframe, text="GLSLViewer path:").grid(column=0, row=glslviewer_row)
-            ttk.Label(mainframe, textvariable=self.glslviewer_path).grid(column=1, row=glslviewer_row)
-            ttk.Button(mainframe, text="Browse", command=self.ask_glslviewer_path).grid(column=2, row=glslviewer_row)
+            ttk.Label(mainframe, textvariable=self.glslviewer_path).grid(column=1, columnspan=2, row=glslviewer_row)
+            ttk.Button(mainframe, text="Browse", command=self.ask_glslviewer_path).grid(column=3, row=glslviewer_row)
             view_state = "disabled"
         # Top row - mod selection
         self.modpath = StringVar()
         ttk.Label(mainframe, text="Mod path:").grid(column=0, row=mod_path_row)
-        ttk.Label(mainframe, textvariable=self.modpath).grid(column=1, row=mod_path_row)
-        ttk.Button(mainframe, text="Browse", command=self.ask_mod_path).grid(column=2, row=mod_path_row)
+        ttk.Label(mainframe, textvariable=self.modpath).grid(column=1, columnspan=2, row=mod_path_row)
+        ttk.Button(mainframe, text="Browse", command=self.ask_mod_path).grid(column=3, row=mod_path_row)
         # Model selector
         self.modelpath = StringVar()
-        ttk.Label(mainframe, text="3D model (opt.)").grid(column=0, row=model_row)
-        ttk.Entry(mainframe, textvariable=self.modelpath, validate="focus", validatecommand=self.validate_model).grid(column=1, row=model_row)
-        ttk.Button(mainframe, text="Browse", command=self.ask_model_path).grid(column=2, row=model_row)
+        ttk.Label(mainframe, text="3D model (optional)").grid(column=0, row=model_row)
+        ttk.Entry(mainframe, textvariable=self.modelpath, validate="focus", validatecommand=self.validate_model).grid(column=1, row=model_row, columnspan=2)
+        ttk.Button(mainframe, text="Browse", command=self.ask_model_path).grid(column=3, row=model_row)
         # Shader selector
         ttk.Label(mainframe, text="Shader:").grid(column=0, row=shader_row)
         self.cbo_shaders = ttk.Combobox(mainframe, state="readonly")
         self.cbo_shaders.grid(column=1, columnspan=2, row=shader_row)
         self.cbo_shaders.bind("<<ComboboxSelected>>", self.set_shader)
+        # Color picker - uObjectColor and uObjectColor2
+        # ttk.Label(mainframe, text="uObjectColor").grid(column=0, row=3)
         # Main controls
         self.btn_view = ttk.Button(mainframe, text="View", state=view_state, command=self.view)
         self.btn_view.grid(column=0, columnspan=2, row=control_row)
-        ttk.Button(mainframe, text="Cancel/Exit", command=self.exit).grid(column=2, row=control_row)
+        ttk.Button(mainframe, text="Cancel/Exit", command=self.exit).grid(column=2, columnspan=2, row=control_row)
         root.mainloop()
 
     def ask_mod_path(self):
@@ -134,7 +150,7 @@ class GZSLViewerGUI:
         for index, shaderdef in enumerate(self.shaderlist):
             self.shader_name_indices[str(shaderdef)] = index
             shaderlist.append(str(shaderdef))
-        self.cbo_shaders.configure(values=shaderlist)
+        self.cbo_shaders["values"] = shaderlist
 
     def set_shader(self, tk_event):
         tk_event.widget.selection_clear()
@@ -244,6 +260,7 @@ def parse_include(modpath):
     return do_include
 
 def resolve_lump(modpath, texname):
+    tex_path = ""
     if "/" in texname:  # Most likely a full path. Note: VILE\X uses backslash!
         tex_glob = re.sub(re_letter, case_desensitize, texname)
         tex_path = glob.glob(os.path.join(modpath, tex_glob))[0]
@@ -251,11 +268,14 @@ def resolve_lump(modpath, texname):
         tex_glob_base = "**/{}*".format(
             re.sub(re_letter, case_desensitize, texname))
         tex_glob = os.path.join(modpath, tex_glob_base)
-        tex_path = glob.glob(tex_glob, recursive=True)[-1]
+        try:
+            tex_path = glob.glob(tex_glob, recursive=True)[-1]
+        except IndexError:
+            print("Lump {} not found!".format(texname))
     return tex_path
 
 def get_shaders(modpath):
-    gldefs_glob = os.path.join(modpath, "**/[gG][lL][dD][eE][fF][sS].*")
+    gldefs_glob = os.path.join(modpath, "**/[gG][lL][dD][eE][fF][sS]*")
     gldefs_paths = glob.glob(gldefs_glob, recursive=True)
     gldefs_text = ""
     for gldefs_path in gldefs_paths:
@@ -282,9 +302,12 @@ def get_shaders(modpath):
         textures = {}
         shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
         if shader_match:
-            shader = shader_match.group(1).strip("\"")
-            shader_glob = re.sub(re_letter, case_desensitize, shader)
-            shader = glob.glob(os.path.join(modpath, shader_glob))[0]
+            shader_fname = shader_match.group(1).strip("\"")
+            shader_glob = re.sub(re_letter, case_desensitize, shader_fname)
+            try:
+                shader = glob.glob(os.path.join(modpath, shader_glob))[0]
+            except IndexError:
+                print("Shader {} not found!".format(shader_fname))
         speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
         if speed_match:
             speed = float(speed_match.group(1))
@@ -310,9 +333,13 @@ if cli:
         print("Please run this in GLSLViewer's folder!", file=sys.stderr)
         exit(1)
     # Parse CLI arguments
-    parser = argparse.ArgumentParser(description="Load a GZDoom shader into glslviewer")
+    parser = argparse.ArgumentParser(
+        description="Load a GZDoom shader into glslviewer"
+    )
     parser.add_argument("path", help="Path to mod folder")
     parser.add_argument("--model", help="Path to 3D model (OBJ)")
+    parser.add_argument("--uObjectColor", help="Value of uObjectColor uniform")
+    parser.add_argument("--uObjectColor2", help="Value of uObjectColor2 uniform")
     args = parser.parse_args()
     # Prompt user and run GLSLViewer
     shader_defs = get_shaders(args.path)
