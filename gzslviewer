@@ -68,6 +68,7 @@ class GZSLViewerGUI:
     def __init__(self, root, glslviewer_available):
         self.manager = None
         self.shaderlist = []
+        self.shader_name_indices = {}
         self.mod_set = False
         self.glslviewer_set = glslviewer_available
         self.glslviewer_available = glslviewer_available
@@ -187,7 +188,6 @@ class GZSLViewerGUI:
         self.manager = LumpManager(self.modpath.get())
         self.shaderlist = get_shaders(self.manager)
         shaderlist = []
-        self.shader_name_indices = {}
         for index, shaderdef in enumerate(self.shaderlist):
             self.shader_name_indices[str(shaderdef)] = index
             shaderlist.append(str(shaderdef))
@@ -206,7 +206,7 @@ class GZSLViewerGUI:
 
     def view(self):
         shader_name = self.cbo_shaders.get()
-        if shader_name == "":
+        if shader_name not in self.shader_name_indices:
             return
         shader_index = self.shader_name_indices[shader_name]
         model_name = self.modelpath.get()
