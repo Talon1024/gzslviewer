@@ -352,34 +352,36 @@ def get_shaders(manager):
             raw_texname, texname, shader, speed, defines, textures, manager))
     return shader_defs
 
-glslviewer_glob = os.path.join(
-    getcwd(), re.sub(re_letter, case_desensitize, "glslviewer"))
-glslviewer_results = glob.glob(glslviewer_glob)
-glslviewer_incwd = len(glslviewer_results) > 0
+
+if __name__ == "__main__":
+    glslviewer_glob = os.path.join(
+        getcwd(), re.sub(re_letter, case_desensitize, "glslviewer"))
+    glslviewer_results = glob.glob(glslviewer_glob)
+    glslviewer_incwd = len(glslviewer_results) > 0
 
 
-if cli:
-    if not glslviewer_incwd:
-        print("Please run this in GLSLViewer's folder!", file=sys.stderr)
-        exit(1)
-    # Parse CLI arguments
-    parser = argparse.ArgumentParser(
-        description="Load a GZDoom shader into glslviewer"
-    )
-    parser.add_argument("path", help="Path to mod folder")
-    parser.add_argument("--model", help="Path to 3D model (OBJ)")
-    parser.add_argument("--uObjectColor", help="Value of uObjectColor uniform")
-    parser.add_argument("--uObjectColor2", help="Value of uObjectColor2 uniform")
-    args = parser.parse_args()
-    mod_lumps = LumpManager(args.path)
-    # Prompt user and run GLSLViewer
-    shader_defs = get_shaders(args.path)
-    print("Select a shader to view:")
-    for index, shader in enumerate(shader_defs):
-        print("{}. {}".format(index + 1, shader.identifier))
-    shader_to_view = input(">")
-    shader_index = int(shader_to_view, 10) - 1
-    shader_defs[shader_index].view(args.model)
-    shader_defs[shader_index].cleanup()
-else:
-    GZSLViewerGUI(Tk(), glslviewer_incwd)
+    if cli:
+        if not glslviewer_incwd:
+            print("Please run this in GLSLViewer's folder!", file=sys.stderr)
+            exit(1)
+        # Parse CLI arguments
+        parser = argparse.ArgumentParser(
+            description="Load a GZDoom shader into glslviewer"
+        )
+        parser.add_argument("path", help="Path to mod folder")
+        parser.add_argument("--model", help="Path to 3D model (OBJ)")
+        parser.add_argument("--uObjectColor", help="Value of uObjectColor uniform")
+        parser.add_argument("--uObjectColor2", help="Value of uObjectColor2 uniform")
+        args = parser.parse_args()
+        mod_lumps = LumpManager(args.path)
+        # Prompt user and run GLSLViewer
+        shader_defs = get_shaders(args.path)
+        print("Select a shader to view:")
+        for index, shader in enumerate(shader_defs):
+            print("{}. {}".format(index + 1, shader.identifier))
+        shader_to_view = input(">")
+        shader_index = int(shader_to_view, 10) - 1
+        shader_defs[shader_index].view(model_path=args.model)
+        shader_defs[shader_index].cleanup()
+    else:
+        GZSLViewerGUI(Tk(), glslviewer_incwd)
