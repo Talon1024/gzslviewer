@@ -45,7 +45,9 @@ class LumpManager:
                 self.gldefs_files.append(lumpfn)
 
     def __getitem__(self, key):
-        fname = LumpManager.lump_name(key)
+        fname = key.lower()
+        if "/" not in key:  # Not full path
+            fname = LumpManager.lump_name(key)
         return self.lump_files[fname]
 
     @staticmethod
@@ -322,6 +324,7 @@ def get_shaders(manager):
                 shader = manager[shader_fname]
             except KeyError:
                 print("Shader {} not found!".format(shader_fname))
+                continue
         speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
         if speed_match:
             speed = float(speed_match.group(1))
