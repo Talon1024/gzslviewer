@@ -69,6 +69,7 @@ class GZSLViewerGUI:
         self.manager = None
         self.shaderlist = []
         self.shader_name_indices = {}
+        # self.shader_alphabet = {}
         self.mod_set = False
         self.glslviewer_set = glslviewer_available
         self.glslviewer_available = glslviewer_available
@@ -189,8 +190,12 @@ class GZSLViewerGUI:
         self.shaderlist = get_shaders(self.manager)
         shaderlist = []
         for index, shaderdef in enumerate(self.shaderlist):
-            self.shader_name_indices[str(shaderdef)] = index
-            shaderlist.append(str(shaderdef))
+            shader_name = str(shaderdef)
+            # shader_letter = shader_name.lower()[0]
+            self.shader_name_indices[shader_name] = index
+            # self.shader_alphabet.setdefault(shader_letter, [])
+            # self.shader_alphabet[shader_letter].append(shader_name)
+            shaderlist.append(shader_name)
         self.cbo_shaders["values"] = shaderlist
         self.mod_set = len(shaderlist) > 0
         self.check_view()
