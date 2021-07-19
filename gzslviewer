@@ -60,9 +60,6 @@ class LumpManager:
             filename = filename[:8]
         return filename
 
-    def abspath(self, filename):
-        return os.path.join(self._modpath, filename)
-
     def open(self, filename, *args, **kwargs):
         return open(os.path.join(self._modpath, filename), *args, **kwargs)
 
@@ -272,9 +269,9 @@ class ShaderDefinition:
     def get_glslviewer_args(self, glslviewer_path, model_path=None):
         argu = [glslviewer_path, "-vFlip",
                 self.convert_shader(),
-                self.manager.abspath(self.main_texture)]
+                self.main_texture]
         for texture in self.textures:
-            argu.append(self.manager.abspath(texture[1]))
+            argu.append(texture[1])
         if model_path and self.shader_type != SHADER_TYPE_POSTPROCESS:
             argu.append(model_path)
         for define in self.defines.items():
