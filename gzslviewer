@@ -60,6 +60,9 @@ class LumpManager:
             filename = filename[:8]
         return filename
 
+    def abspath(self, filename):
+        return os.path.join(self._modpath, filename)
+
     def open(self, filename, *args, **kwargs):
         return open(os.path.join(self._modpath, filename), *args, **kwargs)
 
@@ -202,7 +205,7 @@ class GZSLViewerGUI:
         if model_name == "":
             model_name = None
         glslviewer_path = self.glslviewer_path.get()
-        self.shaderlist[shader_index].view(model_name, glslviewer_path)
+        self.shaderlist[shader_index].view(glslviewer_path, model_name)
         self.shaderlist[shader_index].cleanup()
 
     def exit(self):
@@ -213,13 +216,14 @@ class ShaderDefinition:
     frag_suffix = ".frag"
 
     def __init__(self, identifier, main_texture, shader, speed, defines,
-                 textures, shader_type=SHADER_TYPE_TEXTURE):
+                 textures, manager, shader_type=SHADER_TYPE_TEXTURE):
         self.identifier = identifier
         self.main_texture = main_texture
         self.shader = shader
         self.speed = speed
         self.defines = defines
         self.textures = tuple(textures.items())
+        self.manager = manager
         self.shader_type = shader_type
 
     @staticmethod
@@ -237,7 +241,7 @@ class ShaderDefinition:
         define_bool = "#define {}\n"
         define_kvpair = "#define {} {}\n"
         uniform_texture = "uniform sampler2D {};\n"
-        with open(self.shader, "r") as shader_file, (
+        with self.manager.open(self.shader, "r") as shader_file, (
             tempfile.NamedTemporaryFile("w", suffix=self.frag_suffix,
                                         delete=False)) as temp_shader:
             self.temp_shader_path = temp_shader.name
@@ -254,11 +258,10 @@ class ShaderDefinition:
                 temp_shader.write(shader_text)
         return self.temp_shader_path
 
-    def get_glslviewer_args(self, model_path=None, glslviewer_path=None):
-        argu = ["./glslViewer", "-vFlip",
-                self.convert_shader(), self.main_texture]
-        if glslviewer_path:
-            argu[0] = glslviewer_path
+    def get_glslviewer_args(self, glslviewer_path, model_path=None):
+        argu = [glslviewer_path, "-vFlip",
+                self.convert_shader(),
+                self.manager.abspath(self.main_texture)]
         for texture in self.textures:
             argu.append(texture[1])
         if model_path and self.shader_type != SHADER_TYPE_POSTPROCESS:
@@ -266,12 +269,11 @@ class ShaderDefinition:
         for define in self.defines.items():
             define_str = "-D{0},{1}".format(*define)
             argu.append(define_str)
-        print(argu)
         return argu
 
-    def view(self, model_path=None, glslviewer_path=None):
+    def view(self, glslviewer_path="./glslViewer", model_path=None):
         import subprocess
-        argu = self.get_glslviewer_args(model_path, glslviewer_path)
+        argu = self.get_glslviewer_args(glslviewer_path, model_path)
         subprocess.run(argu)
 
     def cleanup(self):
@@ -336,7 +338,7 @@ def get_shaders(manager):
             texture_path = manager[texture_file]
             textures[texture_name] = texture_path
         shader_defs.append(ShaderDefinition(
-            raw_texname, texname, shader, speed, defines, textures))
+            raw_texname, texname, shader, speed, defines, textures, manager))
     return shader_defs
 
 glslviewer_glob = os.path.join(
