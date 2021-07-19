@@ -37,8 +37,8 @@ class LumpManager:
         self._modpath = modpath
         mod_glob = os.path.join(modpath, r"**/*")
         for lumpfn in glob.iglob(mod_glob, recursive=True):
-            lumpfn = os.path.relpath(lumpfn, modpath).lower()
-            self.lump_files[lumpfn] = lumpfn
+            lumppath = os.path.relpath(lumpfn, modpath).lower()
+            self.lump_files[lumppath] = lumpfn
             shortname = LumpManager.lump_name(os.path.basename(lumpfn))
             self.lump_files[shortname] = lumpfn
             if shortname == "gldefs":
@@ -274,7 +274,7 @@ class ShaderDefinition:
                 self.convert_shader(),
                 self.manager.abspath(self.main_texture)]
         for texture in self.textures:
-            argu.append(texture[1])
+            argu.append(self.manager.abspath(texture[1]))
         if model_path and self.shader_type != SHADER_TYPE_POSTPROCESS:
             argu.append(model_path)
         for define in self.defines.items():

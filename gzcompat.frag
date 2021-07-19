@@ -1,5 +1,3 @@
-#ifdef GLSLVIEWER
-
 // Required for following defines
 in vec3 v_normal;
 in vec4 v_position;
@@ -75,7 +73,7 @@ vec4 desaturate(vec4 texel)
 vec4 FragColor;
 
 // Take care of a GLSL compiler warning
-out vec4 gl_FragColor;
+// out vec4 gl_FragColor;
 
 vec4 getTexel(vec2 uv)
 {
@@ -88,6 +86,4 @@ void main()
 	FragColor = Process(vec4(1.0));
 	gl_FragColor = FragColor;
 }
-#endif
-
 #endif
