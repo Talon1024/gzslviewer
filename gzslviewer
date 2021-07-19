@@ -22,15 +22,50 @@ re_comment = r"(?:/\*.+\*/)|(?://[^\n]+)"
 re_letter = re.compile(r"([A-Za-z])")
 re_float = r"(-?\d+(?:\.\d+(?:e\d+)?)?)"
 re_shader = r"Shader\s+" + re_string
-re_texture = r"Texture\s+" + re_string + "\s+" + re_string
+re_texture = r"Texture\s+" + re_string + r"\s+" + re_string
 re_speed = r"Speed\s+" + re_float
-re_define = r"define\s+" + re_string + "\s*=\s*" + re_string
+re_define = r"define\s+" + re_string + r"\s*=\s*" + re_string
 
 SHADER_TYPE_TEXTURE = "TEXTURE_SHADER"
 SHADER_TYPE_POSTPROCESS = "POSTPROCESS_SHADER"
 
+
+class LumpManager:
+    def __init__(self, modpath):
+        self.lump_files = {}
+        self.gldefs_files = []
+        self._modpath = modpath
+        mod_glob = os.path.join(modpath, r"**/*")
+        for lumpfn in glob.iglob(mod_glob, recursive=True):
+            lumpfn = os.path.relpath(lumpfn, modpath).lower()
+            self.lump_files[lumpfn] = lumpfn
+            shortname = LumpManager.lump_name(os.path.basename(lumpfn))
+            self.lump_files[shortname] = lumpfn
+            if shortname == "gldefs":
+                self.gldefs_files.append(lumpfn)
+
+    def __getitem__(self, key):
+        fname = LumpManager.lump_name(key)
+        return self.lump_files[fname]
+
+    @staticmethod
+    def lump_name(filename):
+        filename = filename.lower()
+        dot_pos = filename.find(".")
+        if dot_pos >= 0:
+            filename = filename[:dot_pos]
+        if len(filename) > 8:
+            filename = filename[:8]
+        return filename
+
+    def open(self, filename, *args, **kwargs):
+        return open(os.path.join(self._modpath, filename), *args, **kwargs)
+
+
 class GZSLViewerGUI:
     def __init__(self, root, glslviewer_available):
+        self.manager = None
+        self.shaderlist = []
         self.glslviewer_available = glslviewer_available
         root.title("GZSLViewer")
         # +--------------------------------------+
@@ -144,7 +179,8 @@ class GZSLViewerGUI:
         return False
 
     def on_select_mod(self):
-        self.shaderlist = get_shaders(self.modpath.get())
+        self.manager = LumpManager(self.modpath.get())
+        self.shaderlist = get_shaders(self.manager)
         shaderlist = []
         self.shader_name_indices = {}
         for index, shaderdef in enumerate(self.shaderlist):
@@ -248,42 +284,21 @@ def case_desensitize(letter):
     upper = letter.group(1).upper()
     return "[" + lower + upper + "]"
 
-def parse_include(modpath):
+def parse_include(manager):
     def do_include(match):
         include_fname = match.group(1).strip("\"")
-        include_glob = re.sub(re_letter, case_desensitize, include_fname)
-        include_fpath = os.path.join(modpath, include_glob)
-        include_file = open(glob.glob(include_fpath)[0], "r")
-        include_text = include_file.read()
-        include_file.close()
+        with manager.open(include_fname, "r") as include_file:
+            include_text = include_file.read()
         return include_text
     return do_include
 
-def resolve_lump(modpath, texname):
-    tex_path = ""
-    if "/" in texname:  # Most likely a full path. Note: VILE\X uses backslash!
-        tex_glob = re.sub(re_letter, case_desensitize, texname)
-        tex_path = glob.glob(os.path.join(modpath, tex_glob))[0]
-    else:
-        tex_glob_base = "**/{}*".format(
-            re.sub(re_letter, case_desensitize, texname))
-        tex_glob = os.path.join(modpath, tex_glob_base)
-        try:
-            tex_path = glob.glob(tex_glob, recursive=True)[-1]
-        except IndexError:
-            print("Lump {} not found!".format(texname))
-    return tex_path
-
-def get_shaders(modpath):
-    gldefs_glob = os.path.join(modpath, "**/[gG][lL][dD][eE][fF][sS]*")
-    gldefs_paths = glob.glob(gldefs_glob, recursive=True)
+def get_shaders(manager):
     gldefs_text = ""
-    for gldefs_path in gldefs_paths:
-        gldefs_file = open(gldefs_path, "r")
-        gldefs_text += gldefs_file.read()
-        gldefs_file.close()
+    for gldefs_path in manager.gldefs_files:
+        with manager.open(gldefs_path, "r") as gldefs_file:
+            gldefs_text += gldefs_file.read()
 
-    gldefs_text = re.sub(re_gldefs_include, parse_include(modpath),
+    gldefs_text = re.sub(re_gldefs_include, parse_include(manager),
                          gldefs_text, flags=re.IGNORECASE)
     gldefs_text = re.sub(re_comment, "", gldefs_text, flags=re.DOTALL)
     shader_defs = []
@@ -295,7 +310,7 @@ def get_shaders(modpath):
         def_end = gldefs_text.find("}", shader_match.start(1))
         shader_def = gldefs_text[def_start:def_end]
         raw_texname = shader_match.group(2).lower().strip("\"")
-        texname = resolve_lump(modpath, raw_texname)
+        texname = manager[raw_texname]
         speed = 1
         shader = ""
         defines = {}
@@ -303,10 +318,9 @@ def get_shaders(modpath):
         shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
         if shader_match:
             shader_fname = shader_match.group(1).strip("\"")
-            shader_glob = re.sub(re_letter, case_desensitize, shader_fname)
             try:
-                shader = glob.glob(os.path.join(modpath, shader_glob))[0]
-            except IndexError:
+                shader = manager[shader_fname]
+            except KeyError:
                 print("Shader {} not found!".format(shader_fname))
         speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
         if speed_match:
@@ -316,7 +330,7 @@ def get_shaders(modpath):
         for texture_match in re.finditer(re_texture, shader_def, re.IGNORECASE):
             texture_name = texture_match.group(1).strip("\"")
             texture_file = texture_match.group(2).strip("\"")
-            texture_path = resolve_lump(modpath, texture_file)
+            texture_path = manager[texture_file]
             textures[texture_name] = texture_path
         shader_defs.append(ShaderDefinition(
             raw_texname, texname, shader, speed, defines, textures))
@@ -341,6 +355,7 @@ if cli:
     parser.add_argument("--uObjectColor", help="Value of uObjectColor uniform")
     parser.add_argument("--uObjectColor2", help="Value of uObjectColor2 uniform")
     args = parser.parse_args()
+    mod_lumps = LumpManager(args.path)
     # Prompt user and run GLSLViewer
     shader_defs = get_shaders(args.path)
     print("Select a shader to view:")
