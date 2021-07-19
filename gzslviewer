@@ -71,6 +71,8 @@ class GZSLViewerGUI:
     def __init__(self, root, glslviewer_available):
         self.manager = None
         self.shaderlist = []
+        self.mod_set = False
+        self.glslviewer_set = glslviewer_available
         self.glslviewer_available = glslviewer_available
         root.title("GZSLViewer")
         # +--------------------------------------+
@@ -151,6 +153,9 @@ class GZSLViewerGUI:
         self.glslviewer_path.set(filedialog.askdirectory(title="Select GLSLViewer folder", mustexist=True))
         if not self.validate_glslviewer_path():
             self.glslviewer_path.set("")
+        else:
+            self.glslviewer_set = True
+        self.check_view()
 
     def validate_model(self):
         if self.modelpath.get() == "":
@@ -178,9 +183,7 @@ class GZSLViewerGUI:
         glslviewer_results = glob.glob(glslviewer_glob)
         if len(glslviewer_results) > 0:
             self.glslviewer_path.set(glslviewer_results[0])
-            self.btn_view.state(["!disabled"])
             return True
-        self.btn_view.state(["disabled"])
         return False
 
     def on_select_mod(self):
@@ -192,9 +195,17 @@ class GZSLViewerGUI:
             self.shader_name_indices[str(shaderdef)] = index
             shaderlist.append(str(shaderdef))
         self.cbo_shaders["values"] = shaderlist
+        self.mod_set = len(shaderlist) > 0
+        self.check_view()
 
     def set_shader(self, tk_event):
         tk_event.widget.selection_clear()
+    
+    def check_view(self):
+        if self.glslviewer_set and self.mod_set:
+            self.btn_view.state(["!disabled"])
+        else:
+            self.btn_view.state(["disabled"])
 
     def view(self):
         shader_name = self.cbo_shaders.get()
