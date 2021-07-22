@@ -3,6 +3,8 @@ import re
 import argparse
 import os.path
 import os
+import stat
+import subprocess
 import sys
 import glob
 import tempfile
@@ -42,7 +44,7 @@ class LumpManager:
             shortname = LumpManager.lump_name(os.path.basename(lumpfn))
             self.lump_files[shortname] = lumpfn
             if shortname == "gldefs":
-                self.gldefs_files.append(lumpfn)
+                self.gldefs_files.append(lumppath)
 
     def __getitem__(self, key):
         fname = key.lower()
@@ -61,7 +63,8 @@ class LumpManager:
         return filename
 
     def open(self, filename, *args, **kwargs):
-        return open(os.path.join(self._modpath, filename), *args, **kwargs)
+        filepath = self[filename]
+        return open(filepath, *args, **kwargs)
 
 
 class GZSLViewerGUI:
@@ -71,7 +74,7 @@ class GZSLViewerGUI:
         self.shader_name_indices = {}
         # self.shader_alphabet = {}
         self.mod_set = False
-        self.glslviewer_set = glslviewer_available
+        self.glslviewer_set = bool(glslviewer_available)
         self.glslviewer_available = glslviewer_available
         root.title("GZSLViewer")
         # +--------------------------------------+
@@ -116,6 +119,8 @@ class GZSLViewerGUI:
             ttk.Label(mainframe, textvariable=self.glslviewer_path).grid(column=1, columnspan=2, row=glslviewer_row)
             ttk.Button(mainframe, text="Browse", command=self.ask_glslviewer_path).grid(column=3, row=glslviewer_row)
             view_state = "disabled"
+        else:
+            self.glslviewer_path.set(glslviewer_available)
         # Top row - mod selection
         self.modpath = StringVar()
         ttk.Label(mainframe, text="Mod path:").grid(column=0, row=mod_path_row)
@@ -136,7 +141,6 @@ class GZSLViewerGUI:
         # Main controls
         self.btn_view = ttk.Button(mainframe, text="View", state=view_state, command=self.view)
         self.btn_view.grid(column=0, columnspan=2, row=control_row)
-        ttk.Button(mainframe, text="Cancel/Exit", command=self.exit).grid(column=2, columnspan=2, row=control_row)
         root.mainloop()
 
     def ask_mod_path(self):
@@ -149,10 +153,13 @@ class GZSLViewerGUI:
         ))
 
     def ask_glslviewer_path(self):
-        self.glslviewer_path.set(filedialog.askdirectory(title="Select GLSLViewer folder", mustexist=True))
-        if not self.validate_glslviewer_path():
+        path_to_check = filedialog.askdirectory(
+            title="Select GLSLViewer folder", mustexist=True)
+        glslviewer_path = is_glslviewer_path(path_to_check)
+        if not glslviewer_path:
             self.glslviewer_path.set("")
         else:
+            self.glslviewer_path.set(glslviewer_path)
             self.glslviewer_set = True
         self.check_view()
 
@@ -168,22 +175,6 @@ class GZSLViewerGUI:
             self.modelpath.set("")
             return False
         return True
-
-    def validate_glslviewer_path(self):
-        if self.glslviewer_available:
-            return True
-        glslviewer_exename = "glslviewer"
-        if sys.platform == "win32" or sys.platform == "cygwin":
-            glslviewer_exename += ".exe"
-        glslviewer_glob = os.path.join(
-            self.glslviewer_path.get(),
-            re.sub(re_letter, case_desensitize, glslviewer_exename)
-        )
-        glslviewer_results = glob.glob(glslviewer_glob)
-        if len(glslviewer_results) > 0:
-            self.glslviewer_path.set(glslviewer_results[0])
-            return True
-        return False
 
     def on_select_mod(self):
         self.manager = LumpManager(self.modpath.get())
@@ -220,9 +211,6 @@ class GZSLViewerGUI:
         glslviewer_path = self.glslviewer_path.get()
         self.shaderlist[shader_index].view(glslviewer_path, model_name)
         self.shaderlist[shader_index].cleanup()
-
-    def exit(self):
-        exit(0)
 
 
 class ShaderDefinition:
@@ -276,7 +264,7 @@ class ShaderDefinition:
                 self.convert_shader(),
                 self.main_texture]
         for texture in self.textures:
-            argu.append(texture[1])
+            argu.append(self.manager[texture[1]])
         if model_path and self.shader_type != SHADER_TYPE_POSTPROCESS:
             argu.append(model_path)
         for define in self.defines.items():
@@ -285,39 +273,31 @@ class ShaderDefinition:
         return argu
 
     def view(self, glslviewer_path="./glslViewer", model_path=None):
-        import subprocess
         argu = self.get_glslviewer_args(glslviewer_path, model_path)
         viewer_env = os.environ
         viewer_env["MESA_GL_VERSION_OVERRIDE"] = "3.30"
         subprocess.run(argu, env=viewer_env)
 
     def cleanup(self):
-        import os
         os.remove(self.temp_shader_path)
 
     def __str__(self):
         return self.identifier
 
-def case_desensitize(letter):
-    lower = letter.group(1).lower()
-    upper = letter.group(1).upper()
-    return "[" + lower + upper + "]"
+def get_shaders(manager):
 
-def parse_include(manager):
-    def do_include(match):
+    def parse_include(match):
         include_fname = match.group(1).strip("\"")
         with manager.open(include_fname, "r") as include_file:
             include_text = include_file.read()
         return include_text
-    return do_include
 
-def get_shaders(manager):
     gldefs_text = ""
     for gldefs_path in manager.gldefs_files:
         with manager.open(gldefs_path, "r") as gldefs_file:
             gldefs_text += gldefs_file.read()
 
-    gldefs_text = re.sub(re_gldefs_include, parse_include(manager),
+    gldefs_text = re.sub(re_gldefs_include, parse_include,
                          gldefs_text, flags=re.IGNORECASE)
     gldefs_text = re.sub(re_comment, "", gldefs_text, flags=re.DOTALL)
     shader_defs = []
@@ -329,6 +309,7 @@ def get_shaders(manager):
         def_end = gldefs_text.find("}", shader_match.start(1))
         shader_def = gldefs_text[def_start:def_end]
         raw_texname = shader_match.group(2).lower().strip("\"")
+
         texname = manager[raw_texname]
         speed = 1
         shader = ""
@@ -337,11 +318,10 @@ def get_shaders(manager):
         shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
         if shader_match:
             shader_fname = shader_match.group(1).strip("\"")
-            try:
-                shader = manager[shader_fname]
-            except KeyError:
-                print("Shader {} not found!".format(shader_fname))
-                continue
+        else:
+            continue  # Shader filename is required
+        if not shader_fname:
+            continue
         speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
         if speed_match:
             speed = float(speed_match.group(1))
@@ -350,20 +330,39 @@ def get_shaders(manager):
         for texture_match in re.finditer(re_texture, shader_def, re.IGNORECASE):
             texture_name = texture_match.group(1).strip("\"")
             texture_file = texture_match.group(2).strip("\"")
-            texture_path = manager[texture_file]
-            textures[texture_name] = texture_path
+            textures[texture_name] = texture_file
         shader_defs.append(ShaderDefinition(
-            raw_texname, texname, shader, speed, defines, textures, manager))
+            raw_texname, texname, shader_fname, speed, defines, textures,
+            manager))
     return shader_defs
 
 
-def run():
+def is_glslviewer_path(path):
+    def case_desensitize(letter):
+        lower = letter.group(1).lower()
+        upper = letter.group(1).upper()
+        return "[" + lower + upper + "]"
+    glslviewer_exename = "glslviewer"
+    if sys.platform == "win32" or sys.platform == "cygwin":
+        glslviewer_exename += ".exe"
     glslviewer_glob = os.path.join(
-        os.getcwd(), re.sub(re_letter, case_desensitize, "glslviewer"))
+        path, re.sub(re_letter, case_desensitize, glslviewer_exename))
     glslviewer_results = glob.glob(glslviewer_glob)
-    glslviewer_incwd = len(glslviewer_results) > 0
+    try:
+        glslviewer_incwd = glslviewer_results[0]
+    except IndexError:
+        return None
+    glslviewer_stat = os.stat(glslviewer_incwd)
+    mode = glslviewer_stat.st_mode
+    if (stat.S_ISREG(mode) and  # Ensure glslviewer is a regular file
+            # And ensure it is executable
+            mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)):
+        return glslviewer_incwd
+    return None
 
 
+def run():
+    glslviewer_incwd = is_glslviewer_path(os.getcwd())
     if cli:
         if not glslviewer_incwd:
             print("Please run this in GLSLViewer's folder!", file=sys.stderr)
@@ -385,7 +384,7 @@ def run():
             print("{}. {}".format(index + 1, shader.identifier))
         shader_to_view = input(">")
         shader_index = int(shader_to_view, 10) - 1
-        shader_defs[shader_index].view(model_path=args.model)
+        shader_defs[shader_index].view(glslviewer_incwd, args.model)
         shader_defs[shader_index].cleanup()
     else:
         GZSLViewerGUI(Tk(), glslviewer_incwd)
