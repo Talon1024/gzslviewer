@@ -303,6 +303,7 @@ def get_shaders(manager):
     shader_defs = []
 
     for shader_match in re.finditer(re_shaderinfo, gldefs_text, re.IGNORECASE):
+        # TODO: Post-processing shader support
         if shader_match.group(1).lower() == "postprocess":
             continue
         def_start = gldefs_text.find("{", shader_match.start(1))
@@ -312,15 +313,17 @@ def get_shaders(manager):
 
         texname = manager[raw_texname]
         speed = 1
-        shader = ""
         defines = {}
         textures = {}
         shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
+        # Shader filename is required
         if shader_match:
-            shader_fname = shader_match.group(1).strip("\"")
+            try:
+                shader_fname = shader_match.group(1).strip("\"")
+            except IndexError:
+                # Invalid shader
+                continue
         else:
-            continue  # Shader filename is required
-        if not shader_fname:
             continue
         speed_match = re.search(re_speed, shader_def, re.IGNORECASE)
         if speed_match:
