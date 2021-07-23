@@ -34,12 +34,17 @@ jobs:
       - name: Use it to package gzslviewer
         run: cxfreeze gzslviewer -c --target-dir build --include-files gzcompat.frag
       
-      - name: Zip up the package
+      - name: Zip up the package (Linux)
+        if: ${{ matrix.os != 'windows-latest' }}
         run: |
           cd build
           zip -r gzslviewer.zip *
+      - name: Zip up the package (Windows)
+        if: ${{ matrix.os == 'windows-latest' }}
+        run: Compress-Archive -Path ${{ GITHUB_WORKSPACE }}\build\* -DestinationPath ${{ GITHUB_WORKSPACE }}\build\gzslviewer.zip
+        shell: pwsh
       - name: Upload the executable
         uses: actions/upload-artifact@v2.2.4
         with:
-          name: artifact
+          name: artifact-${{ matrix.os }]
           path: build/gzslviewer.zip
