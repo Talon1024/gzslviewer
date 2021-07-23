@@ -37,7 +37,7 @@ jobs:
       - name: Zip up the package
         run: |
           cd build
-          zip -r * gzslviewer.zip
+          zip -r gzslviewer.zip *
       - name: Upload the executable
         uses: actions/upload-artifact@v2.2.4
         with:
