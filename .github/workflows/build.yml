@@ -46,5 +46,5 @@ jobs:
       - name: Upload the executable
         uses: actions/upload-artifact@v2.2.4
         with:
-          name: artifact-${{ matrix.os }]
+          name: artifact-${{ matrix.os }}
           path: build/gzslviewer.zip
