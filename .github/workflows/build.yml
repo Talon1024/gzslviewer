@@ -41,7 +41,7 @@ jobs:
           zip -r gzslviewer.zip *
       - name: Zip up the package (Windows)
         if: ${{ matrix.os == 'windows-latest' }}
-        run: Compress-Archive -Path ${{ GITHUB_WORKSPACE }}\build\* -DestinationPath ${{ GITHUB_WORKSPACE }}\build\gzslviewer.zip
+        run: Compress-Archive -Path $GITHUB_WORKSPACE\build\* -DestinationPath $GITHUB_WORKSPACE\build\gzslviewer.zip
         shell: pwsh
       - name: Upload the executable
         uses: actions/upload-artifact@v2.2.4
