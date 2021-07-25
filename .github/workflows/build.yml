@@ -36,7 +36,7 @@ jobs:
 
       # Runs a set of commands using the runners shell
       - name: Use it to package gzslviewer
-        run: cxfreeze gzslviewer -c --target-dir build --include-files gzcompat.frag --include-modules=tkinter,ttk
+        run: cxfreeze gzslviewer -c --target-dir build --include-files gzcompat.frag --include-modules=tkinter,tkinter.ttk
       
       - name: Package and upload the executable
         uses: actions/upload-artifact@v2.2.4
