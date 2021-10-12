@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-import re
 import argparse
+import glob
 import os.path
 import os
+import re
 import stat
 import subprocess
 import sys
-import glob
 import tempfile
+import threading
 
 cli = False
 try:
@@ -39,15 +40,21 @@ class LumpManager:
         self.lump_files = {}
         self.gldefs_files = []
         self._modpath = modpath
-        mod_glob = os.path.join(modpath, r"**/*")
+
+    def populate(self, callback=None):
+        # This is a long-running operation, so it should not be run on the
+        # main thread.
+        mod_glob = os.path.join(self._modpath, r"**/*")
         for lumpfn in glob.iglob(mod_glob, recursive=True):
-            lumppath = os.path.relpath(lumpfn, modpath).lower()
+            lumppath = os.path.relpath(lumpfn, self._modpath).lower()
             lumppath = lumppath.replace(os.sep, "/")
             self.lump_files[lumppath] = lumpfn
             shortname = LumpManager.lump_name(os.path.basename(lumpfn))
             self.lump_files[shortname] = lumpfn
             if shortname == "gldefs":
                 self.gldefs_files.append(lumppath)
+        if callback is not None:
+            callback(self)
 
     def __getitem__(self, key):
         fname = key.lower()
@@ -179,8 +186,7 @@ class GZSLViewerGUI:
         ttk.Label(parent, text="Images:").grid(column=0, row=2)
         images_view = Listbox(parent, height=3)
         images_view.grid(column=0, row=3)
-        image_uniform_image = PhotoImage(file="enitesky.png")
-        self.image_uniform_label = ttk.Label(parent, text="No image uniforms", background="#333", foreground="#fff", image=[image_uniform_image])
+        self.image_uniform_label = ttk.Label(parent, text="No image uniforms", background="#333", foreground="#fff")
         self.image_uniform_label.grid(column=1, row=3, sticky=(N, S, E, W))
 
     def ask_mod_path(self):
@@ -218,7 +224,12 @@ class GZSLViewerGUI:
 
     def on_select_mod(self):
         self.manager = LumpManager(self.modpath.get())
-        self.shaderlist = get_shaders(self.manager)
+        glob_thread = threading.Thread(
+            target=self.manager.populate, args=(self.on_lumps_globbed,))
+        glob_thread.start()
+
+    def on_lumps_globbed(self, lump_manager):
+        self.shaderlist = get_shaders(lump_manager)
         shaderlist = []
         for index, shaderdef in enumerate(self.shaderlist):
             shader_name = str(shaderdef)
@@ -424,6 +435,7 @@ def run():
         parser.add_argument("--uObjectColor2", help="Value of uObjectColor2 uniform")
         args = parser.parse_args()
         mod_lumps = LumpManager(args.path)
+        mod_lumps.populate()
         # Prompt user and run GLSLViewer
         shader_defs = get_shaders(mod_lumps)
         print("Select a shader to view:")
