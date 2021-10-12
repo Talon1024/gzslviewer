@@ -168,7 +168,20 @@ class GZSLViewerGUI:
         # | |        |  |                     |  |
         # | +--------+  +---------------------+  |
         # +--------------------------------------+
-        ttk.Label(parent, text="Uniforms:").grid(column=0, row=0)
+        # Uniforms
+        ttk.Label(parent, text="Uniforms (double-click to edit):").grid(column=0, row=0, columnspan=2)
+        uniforms_view = ttk.Treeview(parent, columns=("Name", "Value"), height=5, show="headings")
+        uniforms_view.grid(column=0, row=1, columnspan=2)
+        uniforms_view.insert("", "end", iid="uObjectColor", values=("uObjectColor", "255 255 255"))
+        uniforms_view.insert("", "end", iid="uObjectColor2", values=("uObjectColor2", "100 140 255"))
+        uniforms_view.bind("<Double-Button-1>", self.on_uniform_edit)
+        # Images
+        ttk.Label(parent, text="Images:").grid(column=0, row=2)
+        images_view = Listbox(parent, height=3)
+        images_view.grid(column=0, row=3)
+        image_uniform_image = PhotoImage(file="enitesky.png")
+        self.image_uniform_label = ttk.Label(parent, text="No image uniforms", background="#333", foreground="#fff", image=[image_uniform_image])
+        self.image_uniform_label.grid(column=1, row=3, sticky=(N, S, E, W))
 
     def ask_mod_path(self):
         self.modpath.set(filedialog.askdirectory(title="Select mod folder", mustexist=True))
@@ -219,6 +232,7 @@ class GZSLViewerGUI:
         self.check_view()
 
     def set_shader(self, tk_event):
+        # tk_event.widget: Combobox
         tk_event.widget.selection_clear()
 
     def check_view(self):
@@ -226,6 +240,11 @@ class GZSLViewerGUI:
             self.btn_view.state(["!disabled"])
         else:
             self.btn_view.state(["disabled"])
+
+    def on_uniform_edit(self, tk_event):
+        # tk_event.widget: Treeview
+        to_edit = tk_event.widget.selection()[0]
+        print("Editing uniform", to_edit)
 
     def view(self):
         shader_name = self.cbo_shaders.get()
