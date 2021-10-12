@@ -5,6 +5,12 @@ in vec2 v_texcoord;
 in vec4 vTexCoord;
 uniform mat4 u_modelViewProjectionMatrix;
 uniform sampler2D u_tex0;
+#ifdef POSTPROCESS_SHADER
+uniform sampler2D u_scene;
+#define InputTexture u_scene
+#define TexCoord v_texcoord
+#define FragColor gl_FragColor
+#endif
 
 // You must declare this uniform yourself in order to use it
 uniform float u_time;

@@ -27,6 +27,8 @@ re_shader = r"Shader\s+" + re_string
 re_texture = r"Texture\s+" + re_string + r"\s+" + re_string
 re_speed = r"Speed\s+" + re_float
 re_define = r"define\s+" + re_string + r"\s*=\s*" + re_string
+re_uniform = r"uniform\s+" + re_string + r"\s+" + re_string
+re_shadername = r"name\s+" + re_string
 
 SHADER_TYPE_TEXTURE = "TEXTURE_SHADER"
 SHADER_TYPE_POSTPROCESS = "POSTPROCESS_SHADER"
@@ -79,20 +81,32 @@ class GZSLViewerGUI:
         self.glslviewer_available = glslviewer_available
         root.title("GZSLViewer")
         # +--------------------------------------+
-        # | GLSLViewer path: ______..  |Browse|  |
+        # |             GZSLViewer               |
+        # +--------------------------------------+
+        # | *Paths | Uniforms |                  | <- Notebook (tabs)
+        # |--------+----------+                  | The asterisk indicates the
+        # | GLSLViewer path: ______..  |Browse|  | current tab.
         # | Mod path: _____________..  |Browse|  |
         # | 3D model (opt.): |____..|  |Browse|  |
         # | Shader:  |______________________|V|  |
         # | | View |                 | Cancel |  |
+        # +--------------------------------------+
+        #
+        # +--------------------------------------+
+        # |             GZSLViewer               |
+        # +--------------------------------------+
+        # | Paths | *Uniforms |                  | <- Notebook (tabs)
+        # |-------+-----------+                  |
         # | Uniforms:                            |
-        # | +---------------+                    |
-        # | | uObjectColor  |                    |
-        # | | uObjectColor2 |                    |
-        # | |               |                    |
-        # | +---------------+                    |
+        # | +----------------------------------+ |
+        # | | Name            |          Value | | <- Treeview
+        # | | uObjectColor    |    255 255 255 | |
+        # | | uObjectColor2   |    100 140 255 | |
+        # | |                 |                | |
+        # | +----------------------------------+ |
         # | Textures:                            |
         # | +--------+  +---------------------+  |
-        # | |WATR_A00|  |                     |  |
+        # | |WATR_A00|  |                     |  | <- Listbox | Label
         # | |WFNOISE |  |   Texture image     |  |
         # | |        |  |                     |  |
         # | +--------+  +---------------------+  |
@@ -105,7 +119,7 @@ class GZSLViewerGUI:
         model_row = 1 + glslviewer_row_add
         shader_row = 2 + glslviewer_row_add
         control_row = 3 + glslviewer_row_add
-        texture_row = 4 + glslviewer_row_add
+        # texture_row = 4 + glslviewer_row_add
         # Content frame
         mainframe = ttk.Frame(root, padding="2 2 2 2")
         mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
