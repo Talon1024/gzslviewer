@@ -75,11 +75,30 @@ class GZSLViewerGUI:
         self.manager = None
         self.shaderlist = []
         self.shader_name_indices = {}
+        # The Tk Combobox widget doesn't have an event for when the user
+        # enters text into the Combobox, so this is useless
         # self.shader_alphabet = {}
         self.mod_set = False
         self.glslviewer_set = bool(glslviewer_available)
         self.glslviewer_available = glslviewer_available
         root.title("GZSLViewer")
+        # Content frame
+        mainframe = ttk.Frame(root, padding="2 2 2 2")
+        mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
+        # Set up notebook
+        notebook = ttk.Notebook(mainframe)
+        notebook.grid(column=0, row=0)
+        paths_tab_frame = ttk.Frame()
+        self._paths_tab(paths_tab_frame, glslviewer_available)
+        uniforms_tab_frame = ttk.Frame()
+        self._uniforms_tab(uniforms_tab_frame)
+        notebook.add(paths_tab_frame, text="Paths")
+        notebook.add(uniforms_tab_frame, text="Uniforms")
+        notebook.select(0)
+        notebook.enable_traversal()
+        root.mainloop()
+
+    def _paths_tab(self, parent, glslviewer_available):
         # +--------------------------------------+
         # |             GZSLViewer               |
         # +--------------------------------------+
@@ -91,7 +110,45 @@ class GZSLViewerGUI:
         # | Shader:  |______________________|V|  |
         # | | View |                 | Cancel |  |
         # +--------------------------------------+
-        #
+        view_state = "normal"
+        glslviewer_row_add = 0
+        self.glslviewer_path = StringVar()
+        # If GLSLViewer isn't available...
+        if not glslviewer_available:
+            glslviewer_row_add = 1
+            glslviewer_row = -1 + glslviewer_row_add
+            ttk.Label(parent, text="GLSLViewer path:").grid(column=0, row=glslviewer_row)
+            ttk.Label(parent, textvariable=self.glslviewer_path).grid(column=1, columnspan=2, row=glslviewer_row)
+            ttk.Button(parent, text="Browse", command=self.ask_glslviewer_path).grid(column=3, row=glslviewer_row)
+            view_state = "disabled"
+        else:
+            self.glslviewer_path.set(glslviewer_available)
+        glslviewer_row = -1 + glslviewer_row_add
+        mod_path_row = 0 + glslviewer_row_add
+        model_row = 1 + glslviewer_row_add
+        shader_row = 2 + glslviewer_row_add
+        control_row = 3 + glslviewer_row_add
+        # texture_row = 4 + glslviewer_row_add
+        # Top row - mod selection
+        self.modpath = StringVar()
+        ttk.Label(parent, text="Mod path:").grid(column=0, row=mod_path_row)
+        ttk.Label(parent, textvariable=self.modpath).grid(column=1, columnspan=2, row=mod_path_row)
+        ttk.Button(parent, text="Browse", command=self.ask_mod_path).grid(column=3, row=mod_path_row)
+        # Model selector
+        self.modelpath = StringVar()
+        ttk.Label(parent, text="3D model (optional)").grid(column=0, row=model_row)
+        ttk.Entry(parent, textvariable=self.modelpath, validate="focus", validatecommand=self.validate_model).grid(column=1, row=model_row, columnspan=2)
+        ttk.Button(parent, text="Browse", command=self.ask_model_path).grid(column=3, row=model_row)
+        # Shader selector
+        ttk.Label(parent, text="Shader:").grid(column=0, row=shader_row)
+        self.cbo_shaders = ttk.Combobox(parent, state="readonly")
+        self.cbo_shaders.grid(column=1, columnspan=2, row=shader_row)
+        self.cbo_shaders.bind("<<ComboboxSelected>>", self.set_shader)
+        # Main controls
+        self.btn_view = ttk.Button(parent, text="View", state=view_state, command=self.view)
+        self.btn_view.grid(column=1, columnspan=2, row=control_row)
+
+    def _uniforms_tab(self, parent):
         # +--------------------------------------+
         # |             GZSLViewer               |
         # +--------------------------------------+
@@ -111,52 +168,7 @@ class GZSLViewerGUI:
         # | |        |  |                     |  |
         # | +--------+  +---------------------+  |
         # +--------------------------------------+
-        glslviewer_row_add = 0
-        if not glslviewer_available:
-            glslviewer_row_add = 1
-        glslviewer_row = -1 + glslviewer_row_add
-        mod_path_row = 0 + glslviewer_row_add
-        model_row = 1 + glslviewer_row_add
-        shader_row = 2 + glslviewer_row_add
-        control_row = 3 + glslviewer_row_add
-        # texture_row = 4 + glslviewer_row_add
-        # Content frame
-        mainframe = ttk.Frame(root, padding="2 2 2 2")
-        mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
-        root.columnconfigure(0, weight=1)
-        root.rowconfigure(0, weight=1)
-        mainframe.columnconfigure(1, weight=1)
-        # If GLSLViewer isn't available...
-        self.glslviewer_path = StringVar()
-        view_state = "normal"
-        if not glslviewer_available:
-            ttk.Label(mainframe, text="GLSLViewer path:").grid(column=0, row=glslviewer_row)
-            ttk.Label(mainframe, textvariable=self.glslviewer_path).grid(column=1, columnspan=2, row=glslviewer_row)
-            ttk.Button(mainframe, text="Browse", command=self.ask_glslviewer_path).grid(column=3, row=glslviewer_row)
-            view_state = "disabled"
-        else:
-            self.glslviewer_path.set(glslviewer_available)
-        # Top row - mod selection
-        self.modpath = StringVar()
-        ttk.Label(mainframe, text="Mod path:").grid(column=0, row=mod_path_row)
-        ttk.Label(mainframe, textvariable=self.modpath).grid(column=1, columnspan=2, row=mod_path_row)
-        ttk.Button(mainframe, text="Browse", command=self.ask_mod_path).grid(column=3, row=mod_path_row)
-        # Model selector
-        self.modelpath = StringVar()
-        ttk.Label(mainframe, text="3D model (optional)").grid(column=0, row=model_row)
-        ttk.Entry(mainframe, textvariable=self.modelpath, validate="focus", validatecommand=self.validate_model).grid(column=1, row=model_row, columnspan=2)
-        ttk.Button(mainframe, text="Browse", command=self.ask_model_path).grid(column=3, row=model_row)
-        # Shader selector
-        ttk.Label(mainframe, text="Shader:").grid(column=0, row=shader_row)
-        self.cbo_shaders = ttk.Combobox(mainframe, state="readonly")
-        self.cbo_shaders.grid(column=1, columnspan=2, row=shader_row)
-        self.cbo_shaders.bind("<<ComboboxSelected>>", self.set_shader)
-        # Color picker - uObjectColor and uObjectColor2
-        # ttk.Label(mainframe, text="uObjectColor").grid(column=0, row=3)
-        # Main controls
-        self.btn_view = ttk.Button(mainframe, text="View", state=view_state, command=self.view)
-        self.btn_view.grid(column=0, columnspan=2, row=control_row)
-        root.mainloop()
+        ttk.Label(parent, text="Uniforms:").grid(column=0, row=0)
 
     def ask_mod_path(self):
         self.modpath.set(filedialog.askdirectory(title="Select mod folder", mustexist=True))
