@@ -241,7 +241,8 @@ class GZSLViewerGUI:
         # Images
         ttk.Label(parent, text="Images:").grid(column=0, row=2)
         self.lst_images = Listbox(
-            parent, listvariable=self.image_list, height=3)
+            parent, listvariable=self.image_list, height=3,
+            selectmode="single")
         self.lst_images.grid(column=0, row=3)
         self.lst_images.bind("<<ListboxSelect>>", self.on_select_image)
         self.lbl_image_uniform = ttk.Label(
