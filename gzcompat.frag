@@ -83,7 +83,12 @@ vec4 FragColor;
 
 vec4 getTexel(vec2 uv)
 {
-    return texture(u_tex0, uv);
+    vec4 texel = texture(u_tex0, uv);
+    #ifdef TEXTURE_SHADER
+    vec4 colour = vec4(mix(uObjectColor, uObjectColor2, vTexCoord.y), 1.);
+    texel *= colour;
+    #endif
+    return texel;
 }
 #ifdef TEXTURE_SHADER
 vec4 Process(vec4 color);

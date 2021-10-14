@@ -14,6 +14,7 @@ cli = False
 try:
     from tkinter import *
     from tkinter import filedialog
+    from tkinter import simpledialog
     from tkinter import ttk
 except ImportError:
     cli = True
@@ -37,7 +38,7 @@ SHADER_TYPE_POSTPROCESS = "POSTPROCESS_SHADER"
 
 class LumpManager:
     def __init__(self, modpath):
-        self.lump_files = {}
+        self.lump_filenames = {}
         self.gldefs_files = []
         self._modpath = modpath
 
@@ -48,9 +49,9 @@ class LumpManager:
         for lumpfn in glob.iglob(mod_glob, recursive=True):
             lumppath = os.path.relpath(lumpfn, self._modpath).lower()
             lumppath = lumppath.replace(os.sep, "/")
-            self.lump_files[lumppath] = lumpfn
+            self.lump_filenames[lumppath] = lumpfn
             shortname = LumpManager.lump_name(os.path.basename(lumpfn))
-            self.lump_files[shortname] = lumpfn
+            self.lump_filenames[shortname] = lumpfn
             if shortname == "gldefs":
                 self.gldefs_files.append(lumppath)
         if callback is not None:
@@ -58,9 +59,9 @@ class LumpManager:
 
     def __getitem__(self, key):
         fname = key.lower()
-        if "/" not in key:  # Not full path
+        if "/" not in key and len(key) <= 8:  # Not full path
             fname = LumpManager.lump_name(key)
-        return self.lump_files[fname]
+        return self.lump_filenames[fname]
 
     @staticmethod
     def lump_name(filename):
@@ -77,17 +78,73 @@ class LumpManager:
         return open(filepath, *args, **kwargs)
 
 
+class ShaderUniform:
+    uniform_types = {
+        vtype: None for vtype in ("int", "float", "vec2", "vec3")}
+
+    def __init__(self, name, value=(1., 1., 1.), vtype="vec3"):
+        self.name = name
+        self.value = value
+        if vtype not in self.uniform_types:
+            vtype = "vec3"
+        self.vtype = vtype
+
+    def __str__(self):
+        return "uniform {2} {0} = {2}({1});\n".format(
+            self.name, self.get_value(), self.vtype)
+
+    @staticmethod
+    def parse_value(text, vtype, sep=" "):
+        if vtype == "int":
+            return int(text, 10)
+        elif vtype == "float":
+            return float(text)
+        words = text.split(sep)
+        if vtype == "vec2":
+            words += ["0"] * (2 - len(words))
+            # First two "words" of text
+            return tuple(map(float, words))[:2]
+        elif vtype == "vec3":
+            words += ["0"] * (3 - len(words))
+            return tuple(map(float, words))[:3]
+
+    def assign_value(self, text):
+        self.value = ShaderUniform.parse_value(text, self.vtype)
+
+    def get_value(self, sep=","):
+        if self.vtype == "int" or self.vtype == "float":
+            return self.value
+        else:
+            return sep.join(map(str, self.value))
+
+
 class GZSLViewerGUI:
     def __init__(self, root, glslviewer_available):
-        self.manager = None
-        self.shaderlist = []
-        self.shader_name_indices = {}
-        # The Tk Combobox widget doesn't have an event for when the user
-        # enters text into the Combobox, so this is useless
+        # Set up variables
+        self.manager: LumpManager = None
+        self.shaderlist: list = []
+        self.shader_named: dict = {}
+        self.uniform_with_id: dict = {}
+        self.glslviewer_path: StringVar = StringVar()
+        self.modpath: StringVar = StringVar()
+        self.modelpath: StringVar = StringVar()
+        self.image_list: StringVar = StringVar()
+        # The Tk Combobox widget doesn't have an event for when the user types
+        # text into the Combobox, so this is useless for now.
         # self.shader_alphabet = {}
-        self.mod_set = False
-        self.glslviewer_set = bool(glslviewer_available)
-        self.glslviewer_available = glslviewer_available
+        self.mod_set: bool = False
+        self.glslviewer_set: bool = bool(glslviewer_available)
+        self.cur_shader: ShaderDefinition = None
+        self.glslviewer_available: str = glslviewer_available
+        # GUI elements to be set later
+        self.cbo_shaders: ttk.Combobox = None
+        self.btn_view: ttk.Button = None
+        self.tvw_uniforms: ttk.Treeview = None
+        self.tvw_uniforms_items: list = []
+        self.lst_images: Listbox = None
+        self.lbl_image_uniform: ttk.Label = None
+        self.image_uniform_image: PhotoImage = None
+        # Preliminary GUI setup
         root.title("GZSLViewer")
         # Content frame
         mainframe = ttk.Frame(root, padding="2 2 2 2")
@@ -103,6 +160,7 @@ class GZSLViewerGUI:
         notebook.add(uniforms_tab_frame, text="Uniforms")
         notebook.select(0)
         notebook.enable_traversal()
+        # Setup complete
         root.mainloop()
 
     def _paths_tab(self, parent, glslviewer_available):
@@ -119,7 +177,6 @@ class GZSLViewerGUI:
         # +--------------------------------------+
         view_state = "normal"
         glslviewer_row_add = 0
-        self.glslviewer_path = StringVar()
         # If GLSLViewer isn't available...
         if not glslviewer_available:
             glslviewer_row_add = 1
@@ -137,12 +194,10 @@ class GZSLViewerGUI:
         control_row = 3 + glslviewer_row_add
         # texture_row = 4 + glslviewer_row_add
         # Top row - mod selection
-        self.modpath = StringVar()
         ttk.Label(parent, text="Mod path:").grid(column=0, row=mod_path_row)
         ttk.Label(parent, textvariable=self.modpath).grid(column=1, columnspan=2, row=mod_path_row)
         ttk.Button(parent, text="Browse", command=self.ask_mod_path).grid(column=3, row=mod_path_row)
         # Model selector
-        self.modelpath = StringVar()
         ttk.Label(parent, text="3D model (optional)").grid(column=0, row=model_row)
         ttk.Entry(parent, textvariable=self.modelpath, validate="focus", validatecommand=self.validate_model).grid(column=1, row=model_row, columnspan=2)
         ttk.Button(parent, text="Browse", command=self.ask_model_path).grid(column=3, row=model_row)
@@ -176,18 +231,23 @@ class GZSLViewerGUI:
         # | +--------+  +---------------------+  |
         # +--------------------------------------+
         # Uniforms
-        ttk.Label(parent, text="Uniforms (double-click to edit):").grid(column=0, row=0, columnspan=2)
-        uniforms_view = ttk.Treeview(parent, columns=("Name", "Value"), height=5, show="headings")
-        uniforms_view.grid(column=0, row=1, columnspan=2)
-        uniforms_view.insert("", "end", iid="uObjectColor", values=("uObjectColor", "255 255 255"))
-        uniforms_view.insert("", "end", iid="uObjectColor2", values=("uObjectColor2", "100 140 255"))
-        uniforms_view.bind("<Double-Button-1>", self.on_uniform_edit)
+        ttk.Label(parent, text="Uniforms (double-click to edit):")\
+            .grid(column=0, row=0, columnspan=2)
+        self.tvw_uniforms = ttk.Treeview(
+            parent, columns=("Name", "Value"), height=3, selectmode="browse",
+            show="headings")
+        self.tvw_uniforms.grid(column=0, row=1, columnspan=2)
+        self.tvw_uniforms.bind("<Double-Button-1>", self.on_uniform_edit)
         # Images
         ttk.Label(parent, text="Images:").grid(column=0, row=2)
-        images_view = Listbox(parent, height=3)
-        images_view.grid(column=0, row=3)
-        self.image_uniform_label = ttk.Label(parent, text="No image uniforms", background="#333", foreground="#fff")
-        self.image_uniform_label.grid(column=1, row=3, sticky=(N, S, E, W))
+        self.lst_images = Listbox(
+            parent, listvariable=self.image_list, height=3)
+        self.lst_images.grid(column=0, row=3)
+        self.lst_images.bind("<<ListboxSelect>>", self.on_select_image)
+        self.lbl_image_uniform = ttk.Label(
+            parent, text="No textures defined", background="#333",
+            foreground="#fff")
+        self.lbl_image_uniform.grid(column=1, row=3, sticky=(N, S, E, W))
 
     def ask_mod_path(self):
         self.modpath.set(filedialog.askdirectory(title="Select mod folder", mustexist=True))
@@ -231,10 +291,10 @@ class GZSLViewerGUI:
     def on_lumps_globbed(self, lump_manager):
         self.shaderlist = get_shaders(lump_manager)
         shaderlist = []
-        for index, shaderdef in enumerate(self.shaderlist):
+        for shaderdef in self.shaderlist:
             shader_name = str(shaderdef)
             # shader_letter = shader_name.lower()[0]
-            self.shader_name_indices[shader_name] = index
+            self.shader_named[shader_name] = shaderdef
             # self.shader_alphabet.setdefault(shader_letter, [])
             # self.shader_alphabet[shader_letter].append(shader_name)
             shaderlist.append(shader_name)
@@ -245,36 +305,93 @@ class GZSLViewerGUI:
     def set_shader(self, tk_event):
         # tk_event.widget: Combobox
         tk_event.widget.selection_clear()
+        cur_shader = tk_event.widget.get()  # String
+        self.cur_shader = self.shader_named[cur_shader]
+        self.update_image_list()
+        self.update_uniforms()
+        self.check_view()
 
     def check_view(self):
-        if self.glslviewer_set and self.mod_set:
+        if self.glslviewer_set and self.mod_set and self.cur_shader:
             self.btn_view.state(["!disabled"])
         else:
             self.btn_view.state(["disabled"])
 
     def on_uniform_edit(self, tk_event):
         # tk_event.widget: Treeview
-        to_edit = tk_event.widget.selection()[0]
-        print("Editing uniform", to_edit)
+        to_edit = tk_event.widget.selection()
+        if len(to_edit) == 0:  # Nothing selected
+            return
+        to_edit = to_edit[0]
+        uniform: ShaderUniform = self.uniform_with_id[to_edit]
+        result = simpledialog.askstring(
+            "Editing uniform " + to_edit,
+            "Please enter the new value for " + to_edit + ":",
+            initialvalue=uniform.get_value(" "))
+        if result is not None:
+            uniform.assign_value(result)
+        self.tvw_uniforms.item(
+            to_edit, values=(uniform.name, uniform.get_value(" ")))
+
+    def update_uniforms(self):
+        for item in self.tvw_uniforms_items:
+            self.tvw_uniforms.delete(item)
+        self.tvw_uniforms_items = []
+        self.uniform_with_id.clear()
+        for uniform in self.cur_shader.uniforms:
+            uniform_id = self.tvw_uniforms.insert(
+                "", "end", iid=uniform.name,
+                values=(uniform.name, uniform.get_value(" "))
+            )
+            self.tvw_uniforms_items.append(uniform_id)
+            self.uniform_with_id[uniform_id] = uniform
+
+    def update_image_list(self):
+        get_texture_name = lambda tex: tex[0]
+        images = (
+            "None " +
+            " ".join(map(get_texture_name, self.cur_shader.textures)))
+        self.image_list.set(images)
+        self.image_uniform_image = None
+        self.lbl_image_uniform["image"] = None
+        if len(self.cur_shader.textures) > 0:
+            self.lbl_image_uniform["text"] = "Texture not selected"
+        else:
+            self.lbl_image_uniform["text"] = "No textures defined"
+
+    def on_select_image(self, tk_event):
+        # tk_event.widget: Listbox
+        selection_index = tk_event.widget.curselection()
+        if len(selection_index) == 0:
+            return
+        selection_index = selection_index[0]
+        if selection_index == 0:
+            self.image_uniform_image = None
+            self.lbl_image_uniform["image"] = None
+            return
+        selection_index -= 1
+        items = self.image_list.get().split()
+        image = self.cur_shader.textures[selection_index][1]
+        image_file = self.manager[image]
+        self.image_uniform_image = PhotoImage(file=image_file)
+        self.lbl_image_uniform["image"] = self.image_uniform_image
 
     def view(self):
-        shader_name = self.cbo_shaders.get()
-        if shader_name not in self.shader_name_indices:
-            return
-        shader_index = self.shader_name_indices[shader_name]
         model_name = self.modelpath.get()
-        if model_name == "":
-            model_name = None
+        if model_name == "": model_name = None
         glslviewer_path = self.glslviewer_path.get()
-        self.shaderlist[shader_index].view(glslviewer_path, model_name)
-        self.shaderlist[shader_index].cleanup()
+        self.cur_shader.view(glslviewer_path, model_name)
+        self.cur_shader.cleanup()
 
 
 class ShaderDefinition:
     frag_suffix = ".frag"
+    texture_shader_uniforms = [
+        ShaderUniform("uObjectColor"),
+        ShaderUniform("uObjectColor2")]
 
     def __init__(self, identifier, main_texture, shader, speed, defines,
-                 textures, manager, shader_type=SHADER_TYPE_TEXTURE):
+                 textures, uniforms, manager, shader_type=SHADER_TYPE_TEXTURE):
         self.identifier = identifier
         self.main_texture = main_texture
         self.shader = shader
@@ -282,6 +399,7 @@ class ShaderDefinition:
         self.defines = defines
         self.textures = tuple(textures.items())
         self.manager = manager
+        self.uniforms = uniforms
         self.shader_type = shader_type
 
     @staticmethod
@@ -310,6 +428,8 @@ class ShaderDefinition:
                 temp_shader.write(uniform_texture.format(uniform_name))
                 temp_shader.write(define_kvpair.format(
                     extra_texture[0], uniform_name))
+            for uniform in self.uniforms:
+                temp_shader.write(str(uniform))
             temp_shader.write("#include \"gzcompat.frag\"\n")
             for shader_text in shader_file:
                 shader_text = ShaderDefinition.fix_glsl_text(shader_text)
@@ -372,6 +492,7 @@ def get_shaders(manager):
         speed = 1
         defines = {}
         textures = {}
+        uniforms = []
         shader_match = re.search(re_shader, shader_def, re.IGNORECASE)
         # Shader filename is required
         if shader_match:
@@ -391,9 +512,16 @@ def get_shaders(manager):
             texture_name = texture_match.group(1).strip("\"")
             texture_file = texture_match.group(2).strip("\"")
             textures[texture_name] = texture_file
+        for uniform_match in re.finditer(re_uniform, shader_def, re.IGNORECASE):
+            uniform_type = uniform_match.group(1).strip("\"")
+            uniform_name = uniform_match.group(2).strip("\"")
+            uniforms.append(ShaderUniform(uniform_name, vtype=uniform_type))
+        if len(uniforms) == 0:
+            # Not copying this is intentional
+            uniforms = ShaderDefinition.texture_shader_uniforms
         shader_defs.append(ShaderDefinition(
             raw_texname, texname, shader_fname, speed, defines, textures,
-            manager))
+            uniforms, manager))
     return shader_defs
 
 
