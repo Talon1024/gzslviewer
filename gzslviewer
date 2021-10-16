@@ -252,40 +252,12 @@ class GZSLViewerGUI:
         self.lbl_image_uniform.grid(column=1, row=3, sticky=(N, S, E, W))
 
     def ask_mod_path(self):
-        self.modpath.set(filedialog.askdirectory(title="Select mod folder", mustexist=True))
-        self.on_select_mod()
-
-    def ask_model_path(self):
-        self.modelpath.set(filedialog.askopenfilename(
-            filetypes=(("OBJ", ".obj"),)
-        ))
-
-    def ask_glslviewer_path(self):
-        path_to_check = filedialog.askdirectory(
-            title="Select GLSLViewer folder", mustexist=True)
-        glslviewer_path = is_glslviewer_path(path_to_check)
-        if not glslviewer_path:
-            self.glslviewer_path.set("")
-        else:
-            self.glslviewer_path.set(glslviewer_path)
-            self.glslviewer_set = True
-        self.check_view()
-
-    def validate_model(self):
-        if self.modelpath.get() == "":
-            return True
-        re_obj = r"\.obj"
-        if not re.search(re_obj, self.modelpath.get(), re.IGNORECASE):
-            # Model must be an OBJ!
-            self.modelpath.set("")
-            return False
-        if not os.path.lexists(self.modelpath.get()):
-            self.modelpath.set("")
-            return False
-        return True
-
-    def on_select_mod(self):
-        self.manager = LumpManager(self.modpath.get())
+        modpath = filedialog.askdirectory(
+            title="Select mod folder", mustexist=True)
+        if modpath == ():
+            return
+        self.modpath.set(modpath)
+        self.manager = LumpManager(modpath)
         glob_thread = threading.Thread(
             target=self.manager.populate, args=(self.on_lumps_globbed,))
         glob_thread.start()
@@ -304,6 +276,37 @@ class GZSLViewerGUI:
         self.mod_set = len(shaderlist) > 0
         self.check_view()
 
+    def ask_model_path(self):
+        self.modelpath.set(filedialog.askopenfilename(
+            filetypes=(("OBJ", ".obj"),)
+        ))
+
+    def validate_model(self):
+        if self.modelpath.get() == "":
+            return True
+        re_obj = r"\.obj"
+        if not re.search(re_obj, self.modelpath.get(), re.IGNORECASE):
+            # Model must be an OBJ!
+            self.modelpath.set("")
+            return False
+        if not os.path.lexists(self.modelpath.get()):
+            self.modelpath.set("")
+            return False
+        return True
+
+    def ask_glslviewer_path(self):
+        path_to_check = filedialog.askdirectory(
+            title="Select GLSLViewer folder", mustexist=True)
+        if path_to_check == ():
+            return ""
+        glslviewer_path = is_glslviewer_path(path_to_check)
+        if not glslviewer_path:
+            self.glslviewer_path.set("")
+        else:
+            self.glslviewer_path.set(glslviewer_path)
+            self.glslviewer_set = True
+        self.check_view()
+
     def set_shader(self, tk_event):
         # tk_event.widget: Combobox
         tk_event.widget.selection_clear()
@@ -318,6 +321,18 @@ class GZSLViewerGUI:
             self.btn_view.state(["!disabled"])
         else:
             self.btn_view.state(["disabled"])
+
+    def unset_stuff(self):
+        # Image uniforms
+        self.lbl_image_uniform["image"] = ""
+        self.image_uniform_image = None
+        # Image uniform list
+        self.image_list.set("<None>")
+        # Uniforms
+        for item in self.tvw_uniforms_items:
+            self.tvw_uniforms.delete(item)
+        # Shader list
+        self.cbo_shaders["values"] = []
 
     def on_uniform_edit(self, tk_event):
         # tk_event.widget: Treeview
