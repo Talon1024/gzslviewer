@@ -59,7 +59,8 @@ class LumpManager:
 
     def __getitem__(self, key):
         fname = key.lower()
-        if "/" not in key and len(key) <= 8:  # Not full path
+        if fname not in self.lump_filenames:
+            # Not full path, and too long to be a lump name
             fname = LumpManager.lump_name(key)
         return self.lump_filenames[fname]
 
@@ -465,7 +466,7 @@ class ShaderDefinition:
     def __str__(self):
         return self.identifier
 
-def get_shaders(manager):
+def get_shaders(manager: LumpManager):
 
     def parse_include(match):
         include_fname = match.group(1).strip("\"")
@@ -492,7 +493,11 @@ def get_shaders(manager):
         shader_def = gldefs_text[def_start:def_end]
         raw_texname = shader_match.group(2).lower().strip("\"")
 
-        texname = manager[raw_texname]
+        try:
+            texname = manager[raw_texname]
+        except KeyError:
+            print("Could not find texture", raw_texname, file=sys.stderr)
+            continue
         speed = 1
         defines = {}
         textures = {}
