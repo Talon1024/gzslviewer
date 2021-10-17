@@ -210,6 +210,7 @@ class GZSLViewerGUI:
         # Main controls
         self.btn_view = ttk.Button(parent, text="View", state=view_state, command=self.view)
         self.btn_view.grid(column=1, columnspan=2, row=control_row)
+        self.btn_view.state(["disabled"])
 
     def _uniforms_tab(self, parent):
         # +--------------------------------------+
